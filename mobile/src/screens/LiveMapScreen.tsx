@@ -5,6 +5,7 @@ import { Incident } from '../types';
 import { API_BASE_URL, MAPBOX_TOKEN } from '../constants/api';
 import { SeverityColors } from '../constants/colors';
 
+console.log('[Mapbox] token:', MAPBOX_TOKEN ? MAPBOX_TOKEN.slice(0, 20) + '...' : 'EMPTY');
 MapboxGL.setAccessToken(MAPBOX_TOKEN);
 
 // Nepal center [longitude, latitude]
@@ -26,7 +27,7 @@ export default function LiveMapScreen() {
   useEffect(() => {
     fetch(`${API_BASE_URL}/api/v1/incidents`)
       .then(r => r.json())
-      .then(setIncidents)
+      .then(data => setIncidents(Array.isArray(data) ? data : []))
       .catch(console.error)
       .finally(() => setLoading(false));
   }, []);

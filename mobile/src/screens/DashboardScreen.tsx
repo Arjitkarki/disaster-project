@@ -18,7 +18,7 @@ export default function DashboardScreen() {
     if (isRefresh) setRefreshing(true);
     fetch(`${API_BASE_URL}/api/v1/incidents`)
       .then(r => r.json())
-      .then(setIncidents)
+      .then(data => setIncidents(Array.isArray(data) ? data : []))
       .catch(console.error)
       .finally(() => { setLoading(false); setRefreshing(false); });
   };
