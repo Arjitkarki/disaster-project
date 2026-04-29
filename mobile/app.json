@@ -22,13 +22,19 @@
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "com.arjitkarki.disasterawareness"
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      "@rnmapbox/maps"
+      [
+        "@rnmapbox/maps",
+        {
+          "RNMapboxMapsDownloadToken": "pk.eyJ1IjoiYXJqaXRrYXJraSIsImEiOiJjbW9pMXk0aDYwNWFxMnBvbnk4YTVlMzVpIn0.m049YU_Jw8h1mrRnuUhxhw"
+        }
+      ]
     ]
   }
 }

@@ -12,7 +12,7 @@ import SupportScreen from '../screens/SupportScreen';
 export type RootTabParamList = {
   Dashboard: undefined;
   Feed: undefined;
-  LiveMap: undefined;
+  LiveMap: { focusLat: number; focusLng: number; focusId: string } | undefined;
   CitizenReport: undefined;
   Support: undefined;
 };

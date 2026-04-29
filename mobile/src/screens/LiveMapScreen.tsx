@@ -1,15 +1,17 @@
 import React, { useEffect, useState } from 'react';
 import { View, StyleSheet, ActivityIndicator } from 'react-native';
 import MapboxGL from '@rnmapbox/maps';
-import { Incident } from '../types';
-import { API_BASE_URL, MAPBOX_TOKEN } from '../constants/api';
+import { useRoute, RouteProp } from '@react-navigation/native';
+import { MAPBOX_TOKEN } from '../constants/api';
 import { SeverityColors } from '../constants/colors';
+import { RootTabParamList } from '../navigation/AppNavigator';
+import { useIncidents } from '../context/IncidentsContext';
 
-console.log('[Mapbox] token:', MAPBOX_TOKEN ? MAPBOX_TOKEN.slice(0, 20) + '...' : 'EMPTY');
 MapboxGL.setAccessToken(MAPBOX_TOKEN);
 
-// Nepal center [longitude, latitude]
 const NEPAL_CENTER: [number, number] = [84.124, 28.394];
+
+type LiveMapRoute = RouteProp<RootTabParamList, 'LiveMap'>;
 
 type FeatureCollection = {
   type: 'FeatureCollection';
@@ -21,16 +23,24 @@ type FeatureCollection = {
 };
 
 export default function LiveMapScreen() {
-  const [incidents, setIncidents] = useState<Incident[]>([]);
-  const [loading, setLoading] = useState(true);
+  const route = useRoute<LiveMapRoute>();
+  const { incidents, loading } = useIncidents();
+
+  const focusLat = route.params?.focusLat;
+  const focusLng = route.params?.focusLng;
+  const focusId  = route.params?.focusId ?? '';
+
+  const [center, setCenter] = useState<[number, number]>(NEPAL_CENTER);
+  const [zoom, setZoom] = useState(6);
+  const [animMode, setAnimMode] = useState<'flyTo' | 'moveTo'>('moveTo');
 
   useEffect(() => {
-    fetch(`${API_BASE_URL}/api/v1/incidents`)
-      .then(r => r.json())
-      .then(data => setIncidents(Array.isArray(data) ? data : []))
-      .catch(console.error)
-      .finally(() => setLoading(false));
-  }, []);
+    if (focusLat != null && focusLng != null) {
+      setCenter([focusLng, focusLat]);
+      setZoom(12);
+      setAnimMode('flyTo');
+    }
+  }, [focusLat, focusLng]);
 
   const geojson: FeatureCollection = {
     type: 'FeatureCollection',
@@ -45,14 +55,15 @@ export default function LiveMapScreen() {
     <View style={s.container}>
       <MapboxGL.MapView style={s.map} styleURL={MapboxGL.StyleURL.Dark}>
         <MapboxGL.Camera
-          zoomLevel={6}
-          centerCoordinate={NEPAL_CENTER}
-          animationMode="none"
+          zoomLevel={zoom}
+          centerCoordinate={center}
+          animationMode={animMode}
+          animationDuration={animMode === 'flyTo' ? 1000 : 0}
         />
 
         {!loading && (
           <MapboxGL.ShapeSource id="incidents" shape={geojson as any}>
-            {/* Heatmap visible at lower zoom */}
+            {/* Heatmap at low zoom */}
             <MapboxGL.HeatmapLayer
               id="incidents-heat"
               sourceID="incidents"
@@ -68,11 +79,12 @@ export default function LiveMapScreen() {
                 heatmapOpacity: 0.8,
               }}
             />
-            {/* GeoPins visible when zoomed in */}
+
+            {/* All incident pins */}
             <MapboxGL.CircleLayer
               id="incidents-points"
               sourceID="incidents"
-              minZoomLevel={7}
+              minZoomLevel={5}
               style={{
                 circleRadius: 8,
                 circleColor: [
@@ -83,6 +95,40 @@ export default function LiveMapScreen() {
                   SeverityColors.LOW,
                 ],
                 circleStrokeWidth: 2,
+                circleStrokeColor: '#fff',
+              }}
+            />
+
+            {/* Glow ring around focused incident (hidden when no focus via empty-string filter) */}
+            <MapboxGL.CircleLayer
+              id="focus-glow"
+              sourceID="incidents"
+              minZoomLevel={5}
+              filter={['==', ['get', 'id'], focusId]}
+              style={{
+                circleRadius: 20,
+                circleColor: 'rgba(255,255,255,0.2)',
+                circleStrokeWidth: 2,
+                circleStrokeColor: 'rgba(255,255,255,0.6)',
+              }}
+            />
+
+            {/* Focused incident pin on top */}
+            <MapboxGL.CircleLayer
+              id="focus-pin"
+              sourceID="incidents"
+              minZoomLevel={5}
+              filter={['==', ['get', 'id'], focusId]}
+              style={{
+                circleRadius: 10,
+                circleColor: [
+                  'match', ['get', 'severity'],
+                  'CRITICAL', SeverityColors.CRITICAL,
+                  'HIGH',     SeverityColors.HIGH,
+                  'MODERATE', SeverityColors.MODERATE,
+                  SeverityColors.LOW,
+                ],
+                circleStrokeWidth: 3,
                 circleStrokeColor: '#fff',
               }}
             />
