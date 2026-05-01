@@ -1,9 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { View, StyleSheet, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ActivityIndicator, TouchableOpacity } from 'react-native';
 import MapboxGL from '@rnmapbox/maps';
+import { Ionicons } from '@expo/vector-icons';
 import { useRoute, RouteProp } from '@react-navigation/native';
 import { MAPBOX_TOKEN } from '../constants/api';
-import { SeverityColors } from '../constants/colors';
+import { SeverityColors, LifecycleColors } from '../constants/colors';
+import { Incident } from '../types';
 import { RootTabParamList } from '../navigation/AppNavigator';
 import { useIncidents } from '../context/IncidentsContext';
 
@@ -25,6 +27,7 @@ type FeatureCollection = {
 export default function LiveMapScreen() {
   const route = useRoute<LiveMapRoute>();
   const { incidents, loading } = useIncidents();
+  const [selectedIncident, setSelectedIncident] = useState<Incident | null>(null);
 
   const focusLat = route.params?.focusLat;
   const focusLng = route.params?.focusLng;
@@ -51,9 +54,26 @@ export default function LiveMapScreen() {
     })),
   };
 
+  const handlePinPress = (e: any) => {
+    const feature = e.features?.[0];
+    if (!feature) return;
+    const id = feature.properties?.id;
+    const found = incidents.find(i => i.id === id);
+    if (found) {
+      setSelectedIncident(found);
+      setCenter([found.longitude, found.latitude]);
+      setZoom(12);
+      setAnimMode('flyTo');
+    }
+  };
+
   return (
     <View style={s.container}>
-      <MapboxGL.MapView style={s.map} styleURL={MapboxGL.StyleURL.Dark}>
+      <MapboxGL.MapView
+        style={s.map}
+        styleURL={MapboxGL.StyleURL.Dark}
+        onPress={() => setSelectedIncident(null)}
+      >
         <MapboxGL.Camera
           zoomLevel={zoom}
           centerCoordinate={center}
@@ -62,7 +82,11 @@ export default function LiveMapScreen() {
         />
 
         {!loading && (
-          <MapboxGL.ShapeSource id="incidents" shape={geojson as any}>
+          <MapboxGL.ShapeSource
+            id="incidents"
+            shape={geojson as any}
+            onPress={handlePinPress}
+          >
             {/* Heatmap at low zoom */}
             <MapboxGL.HeatmapLayer
               id="incidents-heat"
@@ -99,12 +123,12 @@ export default function LiveMapScreen() {
               }}
             />
 
-            {/* Glow ring around focused incident (hidden when no focus via empty-string filter) */}
+            {/* Glow ring around focused/selected incident */}
             <MapboxGL.CircleLayer
               id="focus-glow"
               sourceID="incidents"
               minZoomLevel={5}
-              filter={['==', ['get', 'id'], focusId]}
+              filter={['==', ['get', 'id'], selectedIncident?.id ?? focusId]}
               style={{
                 circleRadius: 20,
                 circleColor: 'rgba(255,255,255,0.2)',
@@ -113,12 +137,12 @@ export default function LiveMapScreen() {
               }}
             />
 
-            {/* Focused incident pin on top */}
+            {/* Focused/selected incident pin on top */}
             <MapboxGL.CircleLayer
               id="focus-pin"
               sourceID="incidents"
               minZoomLevel={5}
-              filter={['==', ['get', 'id'], focusId]}
+              filter={['==', ['get', 'id'], selectedIncident?.id ?? focusId]}
               style={{
                 circleRadius: 10,
                 circleColor: [
@@ -141,6 +165,41 @@ export default function LiveMapScreen() {
           <ActivityIndicator size="large" color="#DC2626" />
         </View>
       )}
+
+      {/* Incident detail bottom sheet */}
+      {selectedIncident && (
+        <View style={s.sheet}>
+          <TouchableOpacity style={s.sheetClose} onPress={() => setSelectedIncident(null)}>
+            <Ionicons name="close" size={20} color="#374151" />
+          </TouchableOpacity>
+
+          <View style={s.sheetBadgeRow}>
+            <View style={[s.severityBadge, { backgroundColor: SeverityColors[selectedIncident.severity] }]}>
+              <Text style={s.severityText}>{selectedIncident.severity}</Text>
+            </View>
+            <View style={[s.lifecycleBadge, { borderColor: LifecycleColors[selectedIncident.lifecycle] }]}>
+              <Text style={[s.lifecycleText, { color: LifecycleColors[selectedIncident.lifecycle] }]}>
+                {selectedIncident.lifecycle}
+              </Text>
+            </View>
+          </View>
+
+          <Text style={s.sheetTitle}>{selectedIncident.title}</Text>
+          <Text style={s.sheetDesc}>{selectedIncident.description}</Text>
+
+          <View style={s.sheetLocationRow}>
+            <Ionicons name="location-sharp" size={13} color="#DC2626" />
+            <Text style={s.sheetLocationText}>
+              {selectedIncident.zone.district}
+              {selectedIncident.zone.municipality ? ` · ${selectedIncident.zone.municipality}` : ''}
+            </Text>
+          </View>
+
+          <Text style={s.sheetCoords}>
+            {selectedIncident.latitude.toFixed(4)}°N, {selectedIncident.longitude.toFixed(4)}°E
+          </Text>
+        </View>
+      )}
     </View>
   );
 }
@@ -154,4 +213,41 @@ const s = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+
+  sheet: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    padding: 20,
+    paddingBottom: 36,
+    shadowColor: '#000',
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  sheetClose: {
+    position: 'absolute',
+    top: 16,
+    right: 16,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#F3F4F6',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sheetBadgeRow:   { flexDirection: 'row', gap: 8, marginBottom: 12 },
+  severityBadge:   { borderRadius: 4, paddingHorizontal: 8, paddingVertical: 3 },
+  severityText:    { color: '#fff', fontSize: 11, fontWeight: '700' },
+  lifecycleBadge:  { borderRadius: 4, paddingHorizontal: 8, paddingVertical: 3, borderWidth: 1 },
+  lifecycleText:   { fontSize: 11, fontWeight: '600' },
+  sheetTitle:      { fontSize: 17, fontWeight: '700', color: '#111827', marginBottom: 6 },
+  sheetDesc:       { fontSize: 14, color: '#6B7280', lineHeight: 20, marginBottom: 12 },
+  sheetLocationRow:{ flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 4 },
+  sheetLocationText:{ fontSize: 13, color: '#374151', fontWeight: '600' },
+  sheetCoords:     { fontSize: 12, color: '#9CA3AF' },
 });

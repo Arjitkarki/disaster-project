@@ -27,3 +27,13 @@ export interface ReportCreate {
   longitude: number;
   image_url?: string;
 }
+
+export interface ReportResponse {
+  id: string;
+  description: string;
+  latitude: number;
+  longitude: number;
+  image_url?: string;
+  submitted_at: string;
+  lifecycle: Lifecycle;
+}
