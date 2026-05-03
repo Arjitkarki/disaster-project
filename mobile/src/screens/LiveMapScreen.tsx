@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, ActivityIndicator, TouchableOpacity, TextInput } from 'react-native';
+import { View, Text, StyleSheet, ActivityIndicator, TouchableOpacity, TextInput, ScrollView } from 'react-native';
 import MapboxGL from '@rnmapbox/maps';
 import { Ionicons } from '@expo/vector-icons';
 import { useRoute, RouteProp } from '@react-navigation/native';
@@ -49,28 +49,28 @@ export default function LiveMapScreen() {
     }
   }, [focusLat, focusLng]);
 
-  // Derive matching IDs from already-loaded incidents — no API calls
-  const filteredIds = useMemo<string[] | null>(() => {
+  // Derive matching incidents from already-loaded data — no API calls
+  const filteredIncidents = useMemo(() => {
     if (!searchText.trim()) return null;
     const q = searchText.trim().toLowerCase();
-    return incidents
-      .filter(i =>
-        i.title.toLowerCase().includes(q) ||
-        i.zone.district.toLowerCase().includes(q)
-      )
-      .map(i => i.id);
+    return incidents.filter(i =>
+      i.title.toLowerCase().includes(q) ||
+      i.zone.district.toLowerCase().includes(q)
+    );
   }, [incidents, searchText]);
 
-  // Fly to the single match when search narrows to exactly one result
-  useEffect(() => {
-    if (!filteredIds || filteredIds.length !== 1) return;
-    const only = incidents.find(i => i.id === filteredIds[0]);
-    if (only) {
-      setCenter([only.longitude, only.latitude]);
-      setZoom(12);
-      setAnimMode('flyTo');
-    }
-  }, [filteredIds, incidents]);
+  const filteredIds = useMemo(
+    () => filteredIncidents?.map(i => i.id) ?? null,
+    [filteredIncidents],
+  );
+
+  const handleResultPress = (incident: Incident) => {
+    setSelectedIncident(incident);
+    setCenter([incident.longitude, incident.latitude]);
+    setZoom(12);
+    setAnimMode('flyTo');
+    setSearchText('');
+  };
 
   // Mapbox GL filter expression applied to layers — reliable native filtering
   // GeoJSON source stays stable; only the layer visibility changes
@@ -203,40 +203,65 @@ export default function LiveMapScreen() {
         </View>
       )}
 
-      {/* Search bar */}
-      <View style={[s.searchBar, { top: insets.top + 10 }]}>
-        <Ionicons name="search" size={16} color="#9CA3AF" />
-        <TextInput
-          style={s.searchInput}
-          placeholder="Search incidents or districts…"
-          placeholderTextColor="#9CA3AF"
-          value={searchText}
-          onChangeText={setSearchText}
-          returnKeyType="search"
-          clearButtonMode="while-editing"
-          autoCorrect={false}
-          autoCapitalize="none"
-        />
-        {searchText.length > 0 && (
-          <TouchableOpacity
-            onPress={() => setSearchText('')}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+      {/* Search bar + results dropdown */}
+      <View style={[s.searchContainer, { top: insets.top + 10 }]}>
+        <View style={s.searchBar}>
+          <Ionicons name="search" size={16} color="#9CA3AF" />
+          <TextInput
+            style={s.searchInput}
+            placeholder="Search incidents or districts…"
+            placeholderTextColor="#9CA3AF"
+            value={searchText}
+            onChangeText={setSearchText}
+            returnKeyType="search"
+            autoCorrect={false}
+            autoCapitalize="none"
+          />
+          {searchText.length > 0 && (
+            <TouchableOpacity
+              onPress={() => setSearchText('')}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Ionicons name="close-circle" size={18} color="#9CA3AF" />
+            </TouchableOpacity>
+          )}
+        </View>
+
+        {filteredIncidents !== null && filteredIncidents.length === 0 && (
+          <View style={s.noResults}>
+            <Text style={s.noResultsText}>No results</Text>
+          </View>
+        )}
+
+        {filteredIncidents !== null && filteredIncidents.length > 0 && (
+          <ScrollView
+            style={s.resultsList}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
           >
-            <Ionicons name="close-circle" size={18} color="#9CA3AF" />
-          </TouchableOpacity>
+            {filteredIncidents.map((incident, idx) => (
+              <TouchableOpacity
+                key={incident.id}
+                style={[
+                  s.resultRow,
+                  idx < filteredIncidents.length - 1 && s.resultRowBorder,
+                ]}
+                onPress={() => handleResultPress(incident)}
+                activeOpacity={0.7}
+              >
+                <View
+                  style={[s.severityDot, { backgroundColor: SeverityColors[incident.severity] }]}
+                />
+                <View style={s.resultTextCol}>
+                  <Text style={s.resultTitle} numberOfLines={1}>{incident.title}</Text>
+                  <Text style={s.resultDistrict}>{incident.zone.district}</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={14} color="#9CA3AF" />
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
         )}
       </View>
-
-      {/* Result count badge shown while searching */}
-      {filteredIds !== null && (
-        <View style={[s.resultBadge, { top: insets.top + 60 }]}>
-          <Text style={s.resultBadgeText}>
-            {filteredIds.length === 0
-              ? 'No results'
-              : `${filteredIds.length} result${filteredIds.length === 1 ? '' : 's'}`}
-          </Text>
-        </View>
-      )}
 
       {/* Zoom controls */}
       <View style={s.zoomControls}>
@@ -296,10 +321,19 @@ const s = StyleSheet.create({
     alignItems: 'center',
   },
 
-  searchBar: {
+  searchContainer: {
     position: 'absolute',
     left: 16,
     right: 16,
+    zIndex: 10,
+    shadowColor: '#000',
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 6,
+    borderRadius: 12,
+  },
+  searchBar: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#fff',
@@ -307,12 +341,6 @@ const s = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 10,
     gap: 8,
-    shadowColor: '#000',
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 5,
-    zIndex: 10,
   },
   searchInput: {
     flex: 1,
@@ -321,20 +349,57 @@ const s = StyleSheet.create({
     paddingVertical: 0,
   },
 
-  resultBadge: {
-    position: 'absolute',
-    alignSelf: 'center',
-    left: 16,
-    backgroundColor: 'rgba(17,24,39,0.75)',
-    borderRadius: 20,
-    paddingHorizontal: 12,
-    paddingVertical: 5,
-    zIndex: 10,
+  noResults: {
+    backgroundColor: '#fff',
+    borderTopWidth: 1,
+    borderTopColor: '#F3F4F6',
+    borderBottomLeftRadius: 12,
+    borderBottomRightRadius: 12,
+    paddingVertical: 14,
+    alignItems: 'center',
   },
-  resultBadgeText: {
-    color: '#fff',
-    fontSize: 12,
+  noResultsText: {
+    fontSize: 13,
+    color: '#9CA3AF',
+  },
+
+  resultsList: {
+    backgroundColor: '#fff',
+    borderTopWidth: 1,
+    borderTopColor: '#F3F4F6',
+    borderBottomLeftRadius: 12,
+    borderBottomRightRadius: 12,
+    maxHeight: 220,
+  },
+  resultRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    gap: 10,
+  },
+  resultRowBorder: {
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+  },
+  severityDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    flexShrink: 0,
+  },
+  resultTextCol: {
+    flex: 1,
+  },
+  resultTitle: {
+    fontSize: 13,
     fontWeight: '600',
+    color: '#111827',
+  },
+  resultDistrict: {
+    fontSize: 11,
+    color: '#6B7280',
+    marginTop: 1,
   },
 
   sheet: {
