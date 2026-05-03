@@ -1,8 +1,9 @@
-import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ActivityIndicator, TouchableOpacity } from 'react-native';
+import React, { useEffect, useMemo, useState } from 'react';
+import { View, Text, StyleSheet, ActivityIndicator, TouchableOpacity, TextInput } from 'react-native';
 import MapboxGL from '@rnmapbox/maps';
 import { Ionicons } from '@expo/vector-icons';
 import { useRoute, RouteProp } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MAPBOX_TOKEN } from '../constants/api';
 import { SeverityColors, LifecycleColors } from '../constants/colors';
 import { Incident } from '../types';
@@ -27,7 +28,10 @@ type FeatureCollection = {
 export default function LiveMapScreen() {
   const route = useRoute<LiveMapRoute>();
   const { incidents, loading } = useIncidents();
+  const insets = useSafeAreaInsets();
+
   const [selectedIncident, setSelectedIncident] = useState<Incident | null>(null);
+  const [searchText, setSearchText] = useState('');
 
   const focusLat = route.params?.focusLat;
   const focusLng = route.params?.focusLng;
@@ -45,6 +49,36 @@ export default function LiveMapScreen() {
     }
   }, [focusLat, focusLng]);
 
+  // Derive matching IDs from already-loaded incidents — no API calls
+  const filteredIds = useMemo<string[] | null>(() => {
+    if (!searchText.trim()) return null;
+    const q = searchText.trim().toLowerCase();
+    return incidents
+      .filter(i =>
+        i.title.toLowerCase().includes(q) ||
+        i.zone.district.toLowerCase().includes(q)
+      )
+      .map(i => i.id);
+  }, [incidents, searchText]);
+
+  // Fly to the single match when search narrows to exactly one result
+  useEffect(() => {
+    if (!filteredIds || filteredIds.length !== 1) return;
+    const only = incidents.find(i => i.id === filteredIds[0]);
+    if (only) {
+      setCenter([only.longitude, only.latitude]);
+      setZoom(12);
+      setAnimMode('flyTo');
+    }
+  }, [filteredIds, incidents]);
+
+  // Mapbox GL filter expression applied to layers — reliable native filtering
+  // GeoJSON source stays stable; only the layer visibility changes
+  const pinFilter: any = filteredIds
+    ? ['in', ['get', 'id'], ['literal', filteredIds]]
+    : ['has', 'id'];
+
+  // Full GeoJSON is always passed; filtering is done via layer expressions above
   const geojson: FeatureCollection = {
     type: 'FeatureCollection',
     features: incidents.map(i => ({
@@ -71,7 +105,8 @@ export default function LiveMapScreen() {
     <View style={s.container}>
       <MapboxGL.MapView
         style={s.map}
-        styleURL={MapboxGL.StyleURL.Dark}
+        styleURL={MapboxGL.StyleURL.Light}
+        scaleBarPosition={{ bottom: 8, left: 8 }}
         onPress={() => setSelectedIncident(null)}
       >
         <MapboxGL.Camera
@@ -87,11 +122,12 @@ export default function LiveMapScreen() {
             shape={geojson as any}
             onPress={handlePinPress}
           >
-            {/* Heatmap at low zoom */}
+            {/* Heatmap filtered by search */}
             <MapboxGL.HeatmapLayer
               id="incidents-heat"
               sourceID="incidents"
               maxZoomLevel={8}
+              filter={pinFilter}
               style={{
                 heatmapColor: [
                   'interpolate', ['linear'], ['heatmap-density'],
@@ -104,11 +140,12 @@ export default function LiveMapScreen() {
               }}
             />
 
-            {/* All incident pins */}
+            {/* All incident pins, filtered by search */}
             <MapboxGL.CircleLayer
               id="incidents-points"
               sourceID="incidents"
               minZoomLevel={5}
+              filter={pinFilter}
               style={{
                 circleRadius: 8,
                 circleColor: [
@@ -166,6 +203,51 @@ export default function LiveMapScreen() {
         </View>
       )}
 
+      {/* Search bar */}
+      <View style={[s.searchBar, { top: insets.top + 10 }]}>
+        <Ionicons name="search" size={16} color="#9CA3AF" />
+        <TextInput
+          style={s.searchInput}
+          placeholder="Search incidents or districts…"
+          placeholderTextColor="#9CA3AF"
+          value={searchText}
+          onChangeText={setSearchText}
+          returnKeyType="search"
+          clearButtonMode="while-editing"
+          autoCorrect={false}
+          autoCapitalize="none"
+        />
+        {searchText.length > 0 && (
+          <TouchableOpacity
+            onPress={() => setSearchText('')}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Ionicons name="close-circle" size={18} color="#9CA3AF" />
+          </TouchableOpacity>
+        )}
+      </View>
+
+      {/* Result count badge shown while searching */}
+      {filteredIds !== null && (
+        <View style={[s.resultBadge, { top: insets.top + 60 }]}>
+          <Text style={s.resultBadgeText}>
+            {filteredIds.length === 0
+              ? 'No results'
+              : `${filteredIds.length} result${filteredIds.length === 1 ? '' : 's'}`}
+          </Text>
+        </View>
+      )}
+
+      {/* Zoom controls */}
+      <View style={s.zoomControls}>
+        <TouchableOpacity style={s.zoomBtn} onPress={() => setZoom(z => Math.min(z + 1, 20))}>
+          <Text style={s.zoomBtnText}>+</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={s.zoomBtn} onPress={() => setZoom(z => Math.max(z - 1, 1))}>
+          <Text style={s.zoomBtnText}>−</Text>
+        </TouchableOpacity>
+      </View>
+
       {/* Incident detail bottom sheet */}
       {selectedIncident && (
         <View style={s.sheet}>
@@ -214,6 +296,47 @@ const s = StyleSheet.create({
     alignItems: 'center',
   },
 
+  searchBar: {
+    position: 'absolute',
+    left: 16,
+    right: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 8,
+    shadowColor: '#000',
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 5,
+    zIndex: 10,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 14,
+    color: '#111827',
+    paddingVertical: 0,
+  },
+
+  resultBadge: {
+    position: 'absolute',
+    alignSelf: 'center',
+    left: 16,
+    backgroundColor: 'rgba(17,24,39,0.75)',
+    borderRadius: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    zIndex: 10,
+  },
+  resultBadgeText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+
   sheet: {
     position: 'absolute',
     bottom: 0,
@@ -240,14 +363,40 @@ const s = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  sheetBadgeRow:   { flexDirection: 'row', gap: 8, marginBottom: 12 },
-  severityBadge:   { borderRadius: 4, paddingHorizontal: 8, paddingVertical: 3 },
-  severityText:    { color: '#fff', fontSize: 11, fontWeight: '700' },
-  lifecycleBadge:  { borderRadius: 4, paddingHorizontal: 8, paddingVertical: 3, borderWidth: 1 },
-  lifecycleText:   { fontSize: 11, fontWeight: '600' },
-  sheetTitle:      { fontSize: 17, fontWeight: '700', color: '#111827', marginBottom: 6 },
-  sheetDesc:       { fontSize: 14, color: '#6B7280', lineHeight: 20, marginBottom: 12 },
-  sheetLocationRow:{ flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 4 },
+  sheetBadgeRow:    { flexDirection: 'row', gap: 8, marginBottom: 12 },
+  severityBadge:    { borderRadius: 4, paddingHorizontal: 8, paddingVertical: 3 },
+  severityText:     { color: '#fff', fontSize: 11, fontWeight: '700' },
+  lifecycleBadge:   { borderRadius: 4, paddingHorizontal: 8, paddingVertical: 3, borderWidth: 1 },
+  lifecycleText:    { fontSize: 11, fontWeight: '600' },
+  sheetTitle:       { fontSize: 17, fontWeight: '700', color: '#111827', marginBottom: 6 },
+  sheetDesc:        { fontSize: 14, color: '#6B7280', lineHeight: 20, marginBottom: 12 },
+  sheetLocationRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 4 },
   sheetLocationText:{ fontSize: 13, color: '#374151', fontWeight: '600' },
-  sheetCoords:     { fontSize: 12, color: '#9CA3AF' },
+  sheetCoords:      { fontSize: 12, color: '#9CA3AF' },
+
+  zoomControls: {
+    position: 'absolute',
+    bottom: 24,
+    right: 16,
+    gap: 8,
+  },
+  zoomBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 10,
+    backgroundColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.12,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 4,
+  },
+  zoomBtnText: {
+    fontSize: 22,
+    fontWeight: '400',
+    color: '#374151',
+    lineHeight: 26,
+  },
 });
