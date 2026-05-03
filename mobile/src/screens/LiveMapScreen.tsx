@@ -1,8 +1,8 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { View, Text, StyleSheet, ActivityIndicator, TouchableOpacity, TextInput, ScrollView } from 'react-native';
 import MapboxGL from '@rnmapbox/maps';
 import { Ionicons } from '@expo/vector-icons';
-import { useRoute, RouteProp } from '@react-navigation/native';
+import { useRoute, RouteProp, useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MAPBOX_TOKEN } from '../constants/api';
 import { SeverityColors, LifecycleColors } from '../constants/colors';
@@ -37,17 +37,33 @@ export default function LiveMapScreen() {
   const focusLng = route.params?.focusLng;
   const focusId  = route.params?.focusId ?? '';
 
+  const cameraRef = useRef<MapboxGL.Camera>(null);
+
   const [center, setCenter] = useState<[number, number]>(NEPAL_CENTER);
   const [zoom, setZoom] = useState(6);
   const [animMode, setAnimMode] = useState<'flyTo' | 'moveTo'>('moveTo');
 
-  useEffect(() => {
-    if (focusLat != null && focusLng != null) {
-      setCenter([focusLng, focusLat]);
-      setZoom(12);
-      setAnimMode('flyTo');
-    }
-  }, [focusLat, focusLng]);
+  // useFocusEffect fires when the screen is actually visible (not just mounted),
+  // which ensures the Mapbox camera is ready to receive the animation command.
+  useFocusEffect(
+    useCallback(() => {
+      if (focusLat != null && focusLng != null) {
+        setCenter([focusLng, focusLat]);
+        setZoom(12);
+        setAnimMode('flyTo');
+        cameraRef.current?.setCamera({
+          centerCoordinate: [focusLng, focusLat],
+          zoomLevel: 12,
+          animationDuration: 900,
+          animationMode: 'flyTo',
+        });
+        if (focusId) {
+          const found = incidents.find(i => i.id === focusId);
+          if (found) setSelectedIncident(found);
+        }
+      }
+    }, [focusLat, focusLng, focusId, incidents])
+  );
 
   // Derive matching incidents from already-loaded data — no API calls
   const filteredIncidents = useMemo(() => {
@@ -110,6 +126,7 @@ export default function LiveMapScreen() {
         onPress={() => setSelectedIncident(null)}
       >
         <MapboxGL.Camera
+          ref={cameraRef}
           zoomLevel={zoom}
           centerCoordinate={center}
           animationMode={animMode}
