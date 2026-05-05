@@ -1,8 +1,9 @@
-import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ActivityIndicator, TouchableOpacity } from 'react-native';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
+import { View, Text, StyleSheet, ActivityIndicator, TouchableOpacity, TextInput, ScrollView } from 'react-native';
 import MapboxGL from '@rnmapbox/maps';
 import { Ionicons } from '@expo/vector-icons';
-import { useRoute, RouteProp } from '@react-navigation/native';
+import { useRoute, RouteProp, useFocusEffect } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MAPBOX_TOKEN } from '../constants/api';
 import { SeverityColors, LifecycleColors } from '../constants/colors';
 import { Incident } from '../types';
@@ -27,24 +28,73 @@ type FeatureCollection = {
 export default function LiveMapScreen() {
   const route = useRoute<LiveMapRoute>();
   const { incidents, loading } = useIncidents();
+  const insets = useSafeAreaInsets();
+
   const [selectedIncident, setSelectedIncident] = useState<Incident | null>(null);
+  const [searchText, setSearchText] = useState('');
 
   const focusLat = route.params?.focusLat;
   const focusLng = route.params?.focusLng;
   const focusId  = route.params?.focusId ?? '';
 
+  const cameraRef = useRef<MapboxGL.Camera>(null);
+
   const [center, setCenter] = useState<[number, number]>(NEPAL_CENTER);
   const [zoom, setZoom] = useState(6);
   const [animMode, setAnimMode] = useState<'flyTo' | 'moveTo'>('moveTo');
 
-  useEffect(() => {
-    if (focusLat != null && focusLng != null) {
-      setCenter([focusLng, focusLat]);
-      setZoom(12);
-      setAnimMode('flyTo');
-    }
-  }, [focusLat, focusLng]);
+  // useFocusEffect fires when the screen is actually visible (not just mounted),
+  // which ensures the Mapbox camera is ready to receive the animation command.
+  useFocusEffect(
+    useCallback(() => {
+      if (focusLat != null && focusLng != null) {
+        setCenter([focusLng, focusLat]);
+        setZoom(12);
+        setAnimMode('flyTo');
+        cameraRef.current?.setCamera({
+          centerCoordinate: [focusLng, focusLat],
+          zoomLevel: 12,
+          animationDuration: 900,
+          animationMode: 'flyTo',
+        });
+        if (focusId) {
+          const found = incidents.find(i => i.id === focusId);
+          if (found) setSelectedIncident(found);
+        }
+      }
+    }, [focusLat, focusLng, focusId, incidents])
+  );
 
+  // Derive matching incidents from already-loaded data — no API calls
+  const filteredIncidents = useMemo(() => {
+    if (!searchText.trim()) return null;
+    const q = searchText.trim().toLowerCase();
+    return incidents.filter(i =>
+      i.title.toLowerCase().includes(q) ||
+      i.zone.district.toLowerCase().includes(q)
+    );
+  }, [incidents, searchText]);
+
+  const filteredIds = useMemo(
+    () => filteredIncidents?.map(i => i.id) ?? null,
+    [filteredIncidents],
+  );
+
+  const handleResultPress = (incident: Incident) => {
+    setSelectedIncident(incident);
+    setCenter([incident.longitude, incident.latitude]);
+    setZoom(12);
+    setAnimMode('flyTo');
+    setSearchText('');
+  };
+
+  // Mapbox GL filter expression applied to layers — reliable native filtering
+  // GeoJSON source stays stable; only the layer visibility changes
+  const pinFilter: any = filteredIds
+    ? ['in', ['get', 'id'], ['literal', filteredIds]]
+    : ['has', 'id'];
+
+  // Full GeoJSON is always passed; filtering is done via layer expressions above
   const geojson: FeatureCollection = {
     type: 'FeatureCollection',
     features: incidents.map(i => ({
@@ -71,10 +121,12 @@ export default function LiveMapScreen() {
     <View style={s.container}>
       <MapboxGL.MapView
         style={s.map}
-        styleURL={MapboxGL.StyleURL.Dark}
+        styleURL={MapboxGL.StyleURL.Light}
+        scaleBarPosition={{ bottom: 8, left: 8 }}
         onPress={() => setSelectedIncident(null)}
       >
         <MapboxGL.Camera
+          ref={cameraRef}
           zoomLevel={zoom}
           centerCoordinate={center}
           animationMode={animMode}
@@ -87,11 +139,12 @@ export default function LiveMapScreen() {
             shape={geojson as any}
             onPress={handlePinPress}
           >
-            {/* Heatmap at low zoom */}
+            {/* Heatmap filtered by search */}
             <MapboxGL.HeatmapLayer
               id="incidents-heat"
               sourceID="incidents"
               maxZoomLevel={8}
+              filter={pinFilter}
               style={{
                 heatmapColor: [
                   'interpolate', ['linear'], ['heatmap-density'],
@@ -104,11 +157,12 @@ export default function LiveMapScreen() {
               }}
             />
 
-            {/* All incident pins */}
+            {/* All incident pins, filtered by search */}
             <MapboxGL.CircleLayer
               id="incidents-points"
               sourceID="incidents"
               minZoomLevel={5}
+              filter={pinFilter}
               style={{
                 circleRadius: 8,
                 circleColor: [
@@ -166,6 +220,76 @@ export default function LiveMapScreen() {
         </View>
       )}
 
+      {/* Search bar + results dropdown */}
+      <View style={[s.searchContainer, { top: insets.top + 10 }]}>
+        <View style={s.searchBar}>
+          <Ionicons name="search" size={16} color="#9CA3AF" />
+          <TextInput
+            style={s.searchInput}
+            placeholder="Search incidents or districts…"
+            placeholderTextColor="#9CA3AF"
+            value={searchText}
+            onChangeText={setSearchText}
+            returnKeyType="search"
+            autoCorrect={false}
+            autoCapitalize="none"
+          />
+          {searchText.length > 0 && (
+            <TouchableOpacity
+              onPress={() => setSearchText('')}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Ionicons name="close-circle" size={18} color="#9CA3AF" />
+            </TouchableOpacity>
+          )}
+        </View>
+
+        {filteredIncidents !== null && filteredIncidents.length === 0 && (
+          <View style={s.noResults}>
+            <Text style={s.noResultsText}>No results</Text>
+          </View>
+        )}
+
+        {filteredIncidents !== null && filteredIncidents.length > 0 && (
+          <ScrollView
+            style={s.resultsList}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
+            {filteredIncidents.map((incident, idx) => (
+              <TouchableOpacity
+                key={incident.id}
+                style={[
+                  s.resultRow,
+                  idx < filteredIncidents.length - 1 && s.resultRowBorder,
+                ]}
+                onPress={() => handleResultPress(incident)}
+                activeOpacity={0.7}
+              >
+                <View
+                  style={[s.severityDot, { backgroundColor: SeverityColors[incident.severity] }]}
+                />
+                <View style={s.resultTextCol}>
+                  <Text style={s.resultTitle} numberOfLines={1}>{incident.title}</Text>
+                  <Text style={s.resultDistrict}>{incident.zone.district}</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={14} color="#9CA3AF" />
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        )}
+      </View>
+
+      {/* Zoom controls */}
+      <View style={s.zoomControls}>
+        <TouchableOpacity style={s.zoomBtn} onPress={() => setZoom(z => Math.min(z + 1, 20))}>
+          <Text style={s.zoomBtnText}>+</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={s.zoomBtn} onPress={() => setZoom(z => Math.max(z - 1, 1))}>
+          <Text style={s.zoomBtnText}>−</Text>
+        </TouchableOpacity>
+      </View>
+
       {/* Incident detail bottom sheet */}
       {selectedIncident && (
         <View style={s.sheet}>
@@ -214,6 +338,87 @@ const s = StyleSheet.create({
     alignItems: 'center',
   },
 
+  searchContainer: {
+    position: 'absolute',
+    left: 16,
+    right: 16,
+    zIndex: 10,
+    shadowColor: '#000',
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 6,
+    borderRadius: 12,
+  },
+  searchBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 8,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 14,
+    color: '#111827',
+    paddingVertical: 0,
+  },
+
+  noResults: {
+    backgroundColor: '#fff',
+    borderTopWidth: 1,
+    borderTopColor: '#F3F4F6',
+    borderBottomLeftRadius: 12,
+    borderBottomRightRadius: 12,
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  noResultsText: {
+    fontSize: 13,
+    color: '#9CA3AF',
+  },
+
+  resultsList: {
+    backgroundColor: '#fff',
+    borderTopWidth: 1,
+    borderTopColor: '#F3F4F6',
+    borderBottomLeftRadius: 12,
+    borderBottomRightRadius: 12,
+    maxHeight: 220,
+  },
+  resultRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    gap: 10,
+  },
+  resultRowBorder: {
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+  },
+  severityDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    flexShrink: 0,
+  },
+  resultTextCol: {
+    flex: 1,
+  },
+  resultTitle: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#111827',
+  },
+  resultDistrict: {
+    fontSize: 11,
+    color: '#6B7280',
+    marginTop: 1,
+  },
+
   sheet: {
     position: 'absolute',
     bottom: 0,
@@ -240,14 +445,40 @@ const s = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  sheetBadgeRow:   { flexDirection: 'row', gap: 8, marginBottom: 12 },
-  severityBadge:   { borderRadius: 4, paddingHorizontal: 8, paddingVertical: 3 },
-  severityText:    { color: '#fff', fontSize: 11, fontWeight: '700' },
-  lifecycleBadge:  { borderRadius: 4, paddingHorizontal: 8, paddingVertical: 3, borderWidth: 1 },
-  lifecycleText:   { fontSize: 11, fontWeight: '600' },
-  sheetTitle:      { fontSize: 17, fontWeight: '700', color: '#111827', marginBottom: 6 },
-  sheetDesc:       { fontSize: 14, color: '#6B7280', lineHeight: 20, marginBottom: 12 },
-  sheetLocationRow:{ flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 4 },
+  sheetBadgeRow:    { flexDirection: 'row', gap: 8, marginBottom: 12 },
+  severityBadge:    { borderRadius: 4, paddingHorizontal: 8, paddingVertical: 3 },
+  severityText:     { color: '#fff', fontSize: 11, fontWeight: '700' },
+  lifecycleBadge:   { borderRadius: 4, paddingHorizontal: 8, paddingVertical: 3, borderWidth: 1 },
+  lifecycleText:    { fontSize: 11, fontWeight: '600' },
+  sheetTitle:       { fontSize: 17, fontWeight: '700', color: '#111827', marginBottom: 6 },
+  sheetDesc:        { fontSize: 14, color: '#6B7280', lineHeight: 20, marginBottom: 12 },
+  sheetLocationRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 4 },
   sheetLocationText:{ fontSize: 13, color: '#374151', fontWeight: '600' },
-  sheetCoords:     { fontSize: 12, color: '#9CA3AF' },
+  sheetCoords:      { fontSize: 12, color: '#9CA3AF' },
+
+  zoomControls: {
+    position: 'absolute',
+    bottom: 24,
+    right: 16,
+    gap: 8,
+  },
+  zoomBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 10,
+    backgroundColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.12,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 4,
+  },
+  zoomBtnText: {
+    fontSize: 22,
+    fontWeight: '400',
+    color: '#374151',
+    lineHeight: 26,
+  },
 });

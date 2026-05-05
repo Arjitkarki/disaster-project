@@ -66,7 +66,7 @@ async def fetch_incidents() -> List[Incident]:
             description = f'GDACS event: {name}. Alert score: {score:.1f}.',
             severity    = _alert_score_to_severity(score),
             lifecycle   = Lifecycle.ACTIVE,
-            zone        = Zone(id=f'gdacs-{event_id}', name=name, district='Nepal'),
+            zone        = Zone(id=f'gdacs-{event_id}', name=name, district=name),
             latitude    = lat,
             longitude   = lon,
             reported_at = reported_at,

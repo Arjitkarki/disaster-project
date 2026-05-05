@@ -45,7 +45,8 @@ async def fetch_incidents(days_back: int = 30) -> List[Incident]:
         time_ms = int(props.get('time') or 0)
         reported_at = datetime.utcfromtimestamp(time_ms / 1000)
 
-        district = place.split(', ')[-1] if ', ' in place else place
+        parts = place.split(', ')
+        district = parts[-2] if len(parts) >= 2 else parts[-1]
 
         incidents.append(Incident(
             id          = feature['id'],
