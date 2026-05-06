@@ -1,11 +1,11 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
   View, Text, FlatList, StyleSheet, ActivityIndicator,
   RefreshControl, TouchableOpacity, ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { Incident, ReportResponse, Severity } from '../types';
 import { SeverityColors, LifecycleColors } from '../constants/colors';
@@ -40,12 +40,14 @@ export default function FeedScreen() {
   const [reports, setReports] = useState<ReportResponse[]>([]);
   const [sortMode, setSortMode] = useState<'newest' | 'oldest'>('newest');
 
-  useEffect(() => {
+  const fetchReports = useCallback(() => {
     fetch(`${API_BASE_URL}/api/v1/reports`)
       .then(r => r.json())
       .then(data => setReports(Array.isArray(data) ? data : []))
       .catch(() => {});
   }, []);
+
+  useFocusEffect(fetchReports);
 
   const feedItems = useMemo<FeedItem[]>(() => {
     const incidentItems = incidents
@@ -128,7 +130,7 @@ export default function FeedScreen() {
           data={feedItems}
           keyExtractor={item => item.kind + item.data.id}
           contentContainerStyle={s.listContent}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} />}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { refresh(); fetchReports(); }} />}
           ListEmptyComponent={<EmptyFeed />}
           renderItem={({ item }) =>
             item.kind === 'incident'
