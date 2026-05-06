@@ -1,11 +1,11 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   View, Text, FlatList, StyleSheet, ActivityIndicator,
   RefreshControl, TouchableOpacity, ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import { useNavigation } from '@react-navigation/native';
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { Incident, ReportResponse, Severity } from '../types';
 import { SeverityColors, LifecycleColors } from '../constants/colors';
@@ -47,7 +47,10 @@ export default function FeedScreen() {
       .catch(() => {});
   }, []);
 
-  useFocusEffect(fetchReports);
+  useEffect(() => {
+    fetchReports();
+    return navigation.addListener('focus', fetchReports);
+  }, [navigation, fetchReports]);
 
   const feedItems = useMemo<FeedItem[]>(() => {
     const incidentItems = incidents
