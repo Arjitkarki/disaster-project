@@ -30,7 +30,10 @@ type FeatureCollection = {
   }>;
 };
 
+<<<<<<< Updated upstream
 // ── Filter chip definitions ──────────────────────────────────────────────────
+=======
+>>>>>>> Stashed changes
 
 const SEVERITY_CHIPS: { key: Severity; label: string; color: string }[] = [
   { key: 'CRITICAL', label: 'Critical', color: '#DC2626' },
@@ -52,7 +55,10 @@ const TIME_CHIPS: { key: TimeWindow; label: string }[] = [
 ];
 const TIME_ACTIVE_COLOR = '#7C3AED';
 
+<<<<<<< Updated upstream
 // ── Helpers ──────────────────────────────────────────────────────────────────
+=======
+>>>>>>> Stashed changes
 
 function detectType(incident: Incident): string | null {
   const text = (incident.title + ' ' + incident.description).toLowerCase();
@@ -69,12 +75,18 @@ function withinWindow(incident: Incident, window: TimeWindow): boolean {
   return Date.now() - new Date(incident.reported_at).getTime() <= ms;
 }
 
+<<<<<<< Updated upstream
 // Euclidean distance on lng/lat — good enough for nearby sorting
+=======
+>>>>>>> Stashed changes
 function lngLatDist(lng1: number, lat1: number, lng2: number, lat2: number) {
   return Math.sqrt((lng2 - lng1) ** 2 + (lat2 - lat1) ** 2);
 }
 
+<<<<<<< Updated upstream
 // ── Styles ───────────────────────────────────────────────────────────────────
+=======
+>>>>>>> Stashed changes
 
 function makeStyles(t: AppTheme) {
   return StyleSheet.create({
@@ -87,7 +99,10 @@ function makeStyles(t: AppTheme) {
       alignItems: 'center',
     },
 
+<<<<<<< Updated upstream
     // Shadow lives on the outer view (iOS shadow can't coexist with overflow:hidden)
+=======
+>>>>>>> Stashed changes
     searchShadow: {
       position: 'absolute',
       left: 16,
@@ -100,7 +115,10 @@ function makeStyles(t: AppTheme) {
       shadowOffset: { width: 0, height: 3 },
       elevation: 8,
     },
+<<<<<<< Updated upstream
     // Clip wrapper: rounds corners and clips all children
+=======
+>>>>>>> Stashed changes
     searchPanel: {
       borderRadius: 14,
       overflow: 'hidden',
@@ -266,7 +284,11 @@ function makeStyles(t: AppTheme) {
   });
 }
 
+<<<<<<< Updated upstream
 // ── Component ────────────────────────────────────────────────────────────────
+=======
+
+>>>>>>> Stashed changes
 
 export default function LiveMapScreen() {
   const route = useRoute<LiveMapRoute>();
@@ -280,7 +302,10 @@ export default function LiveMapScreen() {
   const [searchText, setSearchText]             = useState('');
   const [searchFocused, setSearchFocused]       = useState(false);
 
+<<<<<<< Updated upstream
   // Filter state
+=======
+>>>>>>> Stashed changes
   const [severityFilters, setSeverityFilters] = useState<Severity[]>([]);
   const [typeFilters, setTypeFilters]         = useState<string[]>([]);
   const [timeFilter, setTimeFilter]           = useState<TimeWindow>('all');
@@ -314,9 +339,14 @@ export default function LiveMapScreen() {
     }, [focusLat, focusLng, focusId, incidents])
   );
 
+<<<<<<< Updated upstream
   // ── Derived data ───────────────────────────────────────────────────────────
 
   // Base set after all filter chips are applied
+=======
+ 
+
+>>>>>>> Stashed changes
   const activeIncidents = useMemo(() => {
     return incidents.filter(i => {
       if (severityFilters.length > 0 && !severityFilters.includes(i.severity)) return false;
@@ -329,7 +359,10 @@ export default function LiveMapScreen() {
     });
   }, [incidents, severityFilters, typeFilters, timeFilter]);
 
+<<<<<<< Updated upstream
   // Search narrows the active set further when text is present
+=======
+>>>>>>> Stashed changes
   const searchResults = useMemo(() => {
     const q = searchText.trim().toLowerCase();
     if (!q) return null;
@@ -339,7 +372,10 @@ export default function LiveMapScreen() {
     );
   }, [activeIncidents, searchText]);
 
+<<<<<<< Updated upstream
   // Nearby HIGH/CRITICAL incidents for auto-suggestions (sorted by distance from map center)
+=======
+>>>>>>> Stashed changes
   const nearbySuggestions = useMemo(() => {
     return activeIncidents
       .filter(i => i.severity === 'HIGH' || i.severity === 'CRITICAL')
@@ -351,7 +387,10 @@ export default function LiveMapScreen() {
       .slice(0, 5);
   }, [activeIncidents, center]);
 
+<<<<<<< Updated upstream
   // IDs visible on the map
+=======
+>>>>>>> Stashed changes
   const visibleIds = useMemo(() => {
     const list = searchResults ?? activeIncidents;
     return list.map(i => i.id);
@@ -371,7 +410,11 @@ export default function LiveMapScreen() {
     })),
   }), [incidents]);
 
+<<<<<<< Updated upstream
   // ── Handlers ───────────────────────────────────────────────────────────────
+=======
+
+>>>>>>> Stashed changes
 
   const handlePinPress = (e: any) => {
     const feature = e.features?.[0];
@@ -404,6 +447,7 @@ export default function LiveMapScreen() {
       prev.includes(key) ? prev.filter(t => t !== key) : [...prev, key]
     );
 
+<<<<<<< Updated upstream
   // ── Dropdown visibility ────────────────────────────────────────────────────
 
   const showDropdown = searchFocused || searchText.length > 0;
@@ -411,6 +455,15 @@ export default function LiveMapScreen() {
   const showResults     = showDropdown && !!searchText;
 
   // ── Render helpers ─────────────────────────────────────────────────────────
+=======
+
+
+  const showDropdown    = searchFocused || searchText.length > 0;
+  const showSuggestions = showDropdown && !searchText && nearbySuggestions.length > 0;
+  const showResults     = showDropdown && !!searchText;
+
+
+>>>>>>> Stashed changes
 
   function renderFilterChips() {
     return (
@@ -421,7 +474,10 @@ export default function LiveMapScreen() {
           contentContainerStyle={s.filterRowContent}
           keyboardShouldPersistTaps="handled"
         >
+<<<<<<< Updated upstream
           {/* Severity chips */}
+=======
+>>>>>>> Stashed changes
           {SEVERITY_CHIPS.map(chip => {
             const active = severityFilters.includes(chip.key);
             return (
@@ -438,7 +494,10 @@ export default function LiveMapScreen() {
 
           <View style={s.chipDivider} />
 
+<<<<<<< Updated upstream
           {/* Type chips */}
+=======
+>>>>>>> Stashed changes
           {TYPE_CHIPS.map(chip => {
             const active = typeFilters.includes(chip.key);
             return (
@@ -455,7 +514,10 @@ export default function LiveMapScreen() {
 
           <View style={s.chipDivider} />
 
+<<<<<<< Updated upstream
           {/* Time chips (single-select) */}
+=======
+>>>>>>> Stashed changes
           {TIME_CHIPS.map(chip => {
             const active = timeFilter === chip.key;
             return (
@@ -540,7 +602,11 @@ export default function LiveMapScreen() {
     return null;
   }
 
+<<<<<<< Updated upstream
   // ── Main render ────────────────────────────────────────────────────────────
+=======
+ 
+>>>>>>> Stashed changes
 
   return (
     <View style={s.container}>
@@ -644,7 +710,10 @@ export default function LiveMapScreen() {
       {/* Search panel */}
       <View style={[s.searchShadow, { top: insets.top + 10 }]}>
         <View style={s.searchPanel}>
+<<<<<<< Updated upstream
           {/* Search bar */}
+=======
+>>>>>>> Stashed changes
           <View style={s.searchBar}>
             <Ionicons name="search" size={16} color={t.muted} />
             <TextInput
@@ -669,10 +738,14 @@ export default function LiveMapScreen() {
             )}
           </View>
 
+<<<<<<< Updated upstream
           {/* Filter chips (always visible) */}
           {renderFilterChips()}
 
           {/* Dropdown: suggestions or search results */}
+=======
+          {renderFilterChips()}
+>>>>>>> Stashed changes
           {renderDropdown()}
         </View>
       </View>
