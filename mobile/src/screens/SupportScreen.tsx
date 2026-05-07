@@ -1,7 +1,9 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, FlatList, TouchableOpacity, Linking, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { useTheme } from '../context/ThemeContext';
+import { LightTheme, DarkTheme, AppTheme } from '../constants/colors';
 
 type Category = 'emergency' | 'government' | 'ngo';
 
@@ -36,7 +38,29 @@ const CATEGORY_ICON: Record<Category, string> = {
   ngo:        'people',
 };
 
+function makeStyles(t: AppTheme) {
+  return StyleSheet.create({
+    container:  { flex: 1, backgroundColor: t.bg },
+    heading:    { fontSize: 24, fontWeight: '700', color: t.text, padding: 16, paddingBottom: 4 },
+    subheading: { fontSize: 13, color: t.subtext, paddingHorizontal: 16, marginBottom: 16 },
+    card: {
+      flexDirection: 'row', alignItems: 'center', backgroundColor: t.card,
+      borderRadius: 10, padding: 14, marginBottom: 10,
+      shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 4, elevation: 2,
+    },
+    iconWrap:  { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', marginRight: 14 },
+    name:      { fontSize: 15, fontWeight: '700', color: t.text },
+    role:      { fontSize: 12, color: t.subtext, marginTop: 2 },
+    phoneWrap: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+    phone:     { fontSize: 14, fontWeight: '700' },
+  });
+}
+
 export default function SupportScreen() {
+  const { isDark } = useTheme();
+  const t = isDark ? DarkTheme : LightTheme;
+  const s = useMemo(() => makeStyles(t), [t]);
+
   const call = (phone: string) => Linking.openURL(`tel:${phone}`);
 
   return (
@@ -69,19 +93,3 @@ export default function SupportScreen() {
     </SafeAreaView>
   );
 }
-
-const s = StyleSheet.create({
-  container:  { flex: 1, backgroundColor: '#F9FAFB' },
-  heading:    { fontSize: 24, fontWeight: '700', color: '#111827', padding: 16, paddingBottom: 4 },
-  subheading: { fontSize: 13, color: '#6B7280', paddingHorizontal: 16, marginBottom: 16 },
-  card: {
-    flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff',
-    borderRadius: 10, padding: 14, marginBottom: 10,
-    shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 4, elevation: 2,
-  },
-  iconWrap:  { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', marginRight: 14 },
-  name:      { fontSize: 15, fontWeight: '700', color: '#111827' },
-  role:      { fontSize: 12, color: '#6B7280', marginTop: 2 },
-  phoneWrap: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  phone:     { fontSize: 14, fontWeight: '700' },
-});

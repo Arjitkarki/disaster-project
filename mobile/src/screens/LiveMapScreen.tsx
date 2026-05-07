@@ -1,20 +1,25 @@
 import React, { useCallback, useMemo, useRef, useState } from 'react';
-import { View, Text, StyleSheet, ActivityIndicator, TouchableOpacity, TextInput, ScrollView } from 'react-native';
+import {
+  View, Text, StyleSheet, ActivityIndicator,
+  TouchableOpacity, TextInput, ScrollView,
+} from 'react-native';
 import MapboxGL from '@rnmapbox/maps';
 import { Ionicons } from '@expo/vector-icons';
 import { useRoute, RouteProp, useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MAPBOX_TOKEN } from '../constants/api';
-import { SeverityColors, LifecycleColors } from '../constants/colors';
-import { Incident } from '../types';
+import { SeverityColors, LifecycleColors, LightTheme, DarkTheme, AppTheme } from '../constants/colors';
+import { Incident, Severity } from '../types';
 import { RootTabParamList } from '../navigation/AppNavigator';
 import { useIncidents } from '../context/IncidentsContext';
+import { useTheme } from '../context/ThemeContext';
 
 MapboxGL.setAccessToken(MAPBOX_TOKEN);
 
 const NEPAL_CENTER: [number, number] = [84.124, 28.394];
 
 type LiveMapRoute = RouteProp<RootTabParamList, 'LiveMap'>;
+type TimeWindow = 'all' | '24hr' | '7d';
 
 type FeatureCollection = {
   type: 'FeatureCollection';
@@ -25,26 +30,270 @@ type FeatureCollection = {
   }>;
 };
 
+// ── Filter chip definitions ──────────────────────────────────────────────────
+
+const SEVERITY_CHIPS: { key: Severity; label: string; color: string }[] = [
+  { key: 'CRITICAL', label: 'Critical', color: '#DC2626' },
+  { key: 'HIGH',     label: 'High',     color: '#EA580C' },
+  { key: 'LOW',      label: 'Low',      color: '#16A34A' },
+];
+
+const TYPE_CHIPS: { key: string; label: string; color: string }[] = [
+  { key: 'flood',     label: 'Flood',     color: '#0EA5E9' },
+  { key: 'landslide', label: 'Landslide', color: '#92400E' },
+  { key: 'heatwave',  label: 'Heatwave',  color: '#F59E0B' },
+  { key: 'fire',      label: 'Fire',      color: '#EA580C' },
+];
+
+const TIME_CHIPS: { key: TimeWindow; label: string }[] = [
+  { key: 'all',  label: 'All'  },
+  { key: '24hr', label: '24hr' },
+  { key: '7d',   label: '7d'   },
+];
+const TIME_ACTIVE_COLOR = '#7C3AED';
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+function detectType(incident: Incident): string | null {
+  const text = (incident.title + ' ' + incident.description).toLowerCase();
+  if (text.includes('flood')) return 'flood';
+  if (text.includes('landslide')) return 'landslide';
+  if (text.includes('fire') || text.includes('wildfire')) return 'fire';
+  if (text.includes('heat') || text.includes('heatwave')) return 'heatwave';
+  return null;
+}
+
+function withinWindow(incident: Incident, window: TimeWindow): boolean {
+  if (window === 'all') return true;
+  const ms = window === '24hr' ? 86_400_000 : 7 * 86_400_000;
+  return Date.now() - new Date(incident.reported_at).getTime() <= ms;
+}
+
+// Euclidean distance on lng/lat — good enough for nearby sorting
+function lngLatDist(lng1: number, lat1: number, lng2: number, lat2: number) {
+  return Math.sqrt((lng2 - lng1) ** 2 + (lat2 - lat1) ** 2);
+}
+
+// ── Styles ───────────────────────────────────────────────────────────────────
+
+function makeStyles(t: AppTheme) {
+  return StyleSheet.create({
+    container: { flex: 1 },
+    map:       { flex: 1 },
+    overlay: {
+      ...StyleSheet.absoluteFillObject,
+      backgroundColor: 'rgba(0,0,0,0.35)',
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+
+    // Shadow lives on the outer view (iOS shadow can't coexist with overflow:hidden)
+    searchShadow: {
+      position: 'absolute',
+      left: 16,
+      right: 16,
+      zIndex: 10,
+      borderRadius: 14,
+      shadowColor: '#000',
+      shadowOpacity: 0.15,
+      shadowRadius: 10,
+      shadowOffset: { width: 0, height: 3 },
+      elevation: 8,
+    },
+    // Clip wrapper: rounds corners and clips all children
+    searchPanel: {
+      borderRadius: 14,
+      overflow: 'hidden',
+    },
+
+    searchBar: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: t.searchBg,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      gap: 8,
+    },
+    searchInput: {
+      flex: 1,
+      fontSize: 14,
+      color: t.inputText,
+      paddingVertical: 0,
+    },
+
+    filterRow: {
+      backgroundColor: t.searchBg,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: t.border,
+    },
+    filterRowContent: {
+      paddingHorizontal: 10,
+      paddingVertical: 7,
+      alignItems: 'center',
+      gap: 5,
+    },
+    chip: {
+      paddingHorizontal: 9,
+      paddingVertical: 4,
+      borderRadius: 10,
+      borderWidth: 1,
+      borderColor: t.pillBorder,
+    },
+    chipText: {
+      fontSize: 11,
+      fontWeight: '600',
+      color: t.subtext,
+    },
+    chipDivider: {
+      width: StyleSheet.hairlineWidth,
+      height: 14,
+      backgroundColor: t.border,
+      marginHorizontal: 3,
+    },
+
+    dropdown: {
+      backgroundColor: t.searchBg,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: t.border,
+      maxHeight: 230,
+    },
+    suggestionLabel: {
+      fontSize: 10,
+      fontWeight: '700',
+      color: t.muted,
+      paddingHorizontal: 14,
+      paddingTop: 10,
+      paddingBottom: 4,
+      letterSpacing: 0.6,
+      textTransform: 'uppercase',
+    },
+    resultRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingHorizontal: 14,
+      paddingVertical: 11,
+      gap: 10,
+    },
+    resultRowBorder: {
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: t.border,
+    },
+    severityDot: {
+      width: 9,
+      height: 9,
+      borderRadius: 5,
+      flexShrink: 0,
+    },
+    resultTextCol: { flex: 1 },
+    resultTitle: {
+      fontSize: 13,
+      fontWeight: '600',
+      color: t.text,
+    },
+    resultMeta: {
+      fontSize: 11,
+      color: t.subtext,
+      marginTop: 1,
+    },
+    noResults: {
+      paddingVertical: 16,
+      alignItems: 'center',
+    },
+    noResultsText: { fontSize: 13, color: t.muted },
+
+    sheet: {
+      position: 'absolute',
+      bottom: 0,
+      left: 0,
+      right: 0,
+      backgroundColor: t.sheetBg,
+      borderTopLeftRadius: 16,
+      borderTopRightRadius: 16,
+      padding: 20,
+      paddingBottom: 36,
+      shadowColor: '#000',
+      shadowOpacity: 0.15,
+      shadowRadius: 12,
+      elevation: 8,
+    },
+    sheetClose: {
+      position: 'absolute',
+      top: 16,
+      right: 16,
+      width: 32,
+      height: 32,
+      borderRadius: 16,
+      backgroundColor: t.sheetCloseBg,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    sheetBadgeRow:    { flexDirection: 'row', gap: 8, marginBottom: 12 },
+    severityBadge:    { borderRadius: 4, paddingHorizontal: 8, paddingVertical: 3 },
+    severityText:     { color: '#fff', fontSize: 11, fontWeight: '700' },
+    lifecycleBadge:   { borderRadius: 4, paddingHorizontal: 8, paddingVertical: 3, borderWidth: 1 },
+    lifecycleText:    { fontSize: 11, fontWeight: '600' },
+    sheetTitle:       { fontSize: 17, fontWeight: '700', color: t.text, marginBottom: 6 },
+    sheetDesc:        { fontSize: 14, color: t.subtext, lineHeight: 20, marginBottom: 12 },
+    sheetLocationRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 4 },
+    sheetLocationText:{ fontSize: 13, color: t.sectionTitle, fontWeight: '600' },
+    sheetCoords:      { fontSize: 12, color: t.muted },
+
+    zoomControls: {
+      position: 'absolute',
+      bottom: 24,
+      right: 16,
+      gap: 8,
+    },
+    zoomBtn: {
+      width: 44,
+      height: 44,
+      borderRadius: 10,
+      backgroundColor: t.zoomBtnBg,
+      alignItems: 'center',
+      justifyContent: 'center',
+      shadowColor: '#000',
+      shadowOpacity: 0.12,
+      shadowRadius: 6,
+      shadowOffset: { width: 0, height: 2 },
+      elevation: 4,
+    },
+    zoomBtnText: {
+      fontSize: 22,
+      fontWeight: '400',
+      color: t.zoomBtnText,
+      lineHeight: 26,
+    },
+  });
+}
+
+// ── Component ────────────────────────────────────────────────────────────────
+
 export default function LiveMapScreen() {
   const route = useRoute<LiveMapRoute>();
   const { incidents, loading } = useIncidents();
+  const { isDark } = useTheme();
+  const t = isDark ? DarkTheme : LightTheme;
+  const s = useMemo(() => makeStyles(t), [t]);
   const insets = useSafeAreaInsets();
 
   const [selectedIncident, setSelectedIncident] = useState<Incident | null>(null);
-  const [searchText, setSearchText] = useState('');
+  const [searchText, setSearchText]             = useState('');
+  const [searchFocused, setSearchFocused]       = useState(false);
+
+  // Filter state
+  const [severityFilters, setSeverityFilters] = useState<Severity[]>([]);
+  const [typeFilters, setTypeFilters]         = useState<string[]>([]);
+  const [timeFilter, setTimeFilter]           = useState<TimeWindow>('all');
 
   const focusLat = route.params?.focusLat;
   const focusLng = route.params?.focusLng;
   const focusId  = route.params?.focusId ?? '';
 
   const cameraRef = useRef<MapboxGL.Camera>(null);
-
-  const [center, setCenter] = useState<[number, number]>(NEPAL_CENTER);
-  const [zoom, setZoom] = useState(6);
+  const [center, setCenter]     = useState<[number, number]>(NEPAL_CENTER);
+  const [zoom, setZoom]         = useState(6);
   const [animMode, setAnimMode] = useState<'flyTo' | 'moveTo'>('moveTo');
 
-  // useFocusEffect fires when the screen is actually visible (not just mounted),
-  // which ensures the Mapbox camera is ready to receive the animation command.
   useFocusEffect(
     useCallback(() => {
       if (focusLat != null && focusLng != null) {
@@ -65,50 +314,69 @@ export default function LiveMapScreen() {
     }, [focusLat, focusLng, focusId, incidents])
   );
 
-  // Derive matching incidents from already-loaded data — no API calls
-  const filteredIncidents = useMemo(() => {
-    if (!searchText.trim()) return null;
+  // ── Derived data ───────────────────────────────────────────────────────────
+
+  // Base set after all filter chips are applied
+  const activeIncidents = useMemo(() => {
+    return incidents.filter(i => {
+      if (severityFilters.length > 0 && !severityFilters.includes(i.severity)) return false;
+      if (typeFilters.length > 0) {
+        const type = detectType(i);
+        if (!type || !typeFilters.includes(type)) return false;
+      }
+      if (!withinWindow(i, timeFilter)) return false;
+      return true;
+    });
+  }, [incidents, severityFilters, typeFilters, timeFilter]);
+
+  // Search narrows the active set further when text is present
+  const searchResults = useMemo(() => {
     const q = searchText.trim().toLowerCase();
-    return incidents.filter(i =>
+    if (!q) return null;
+    return activeIncidents.filter(i =>
       i.title.toLowerCase().includes(q) ||
       i.zone.district.toLowerCase().includes(q)
     );
-  }, [incidents, searchText]);
+  }, [activeIncidents, searchText]);
 
-  const filteredIds = useMemo(
-    () => filteredIncidents?.map(i => i.id) ?? null,
-    [filteredIncidents],
+  // Nearby HIGH/CRITICAL incidents for auto-suggestions (sorted by distance from map center)
+  const nearbySuggestions = useMemo(() => {
+    return activeIncidents
+      .filter(i => i.severity === 'HIGH' || i.severity === 'CRITICAL')
+      .map(i => ({
+        ...i,
+        _dist: lngLatDist(center[0], center[1], i.longitude, i.latitude),
+      }))
+      .sort((a, b) => a._dist - b._dist)
+      .slice(0, 5);
+  }, [activeIncidents, center]);
+
+  // IDs visible on the map
+  const visibleIds = useMemo(() => {
+    const list = searchResults ?? activeIncidents;
+    return list.map(i => i.id);
+  }, [searchResults, activeIncidents]);
+
+  const pinFilter: any = useMemo(
+    () => ['in', ['get', 'id'], ['literal', visibleIds]],
+    [visibleIds]
   );
 
-  const handleResultPress = (incident: Incident) => {
-    setSelectedIncident(incident);
-    setCenter([incident.longitude, incident.latitude]);
-    setZoom(12);
-    setAnimMode('flyTo');
-    setSearchText('');
-  };
-
-  // Mapbox GL filter expression applied to layers — reliable native filtering
-  // GeoJSON source stays stable; only the layer visibility changes
-  const pinFilter: any = filteredIds
-    ? ['in', ['get', 'id'], ['literal', filteredIds]]
-    : ['has', 'id'];
-
-  // Full GeoJSON is always passed; filtering is done via layer expressions above
-  const geojson: FeatureCollection = {
+  const geojson: FeatureCollection = useMemo(() => ({
     type: 'FeatureCollection',
     features: incidents.map(i => ({
       type: 'Feature',
       geometry: { type: 'Point', coordinates: [i.longitude, i.latitude] },
       properties: { id: i.id, severity: i.severity, title: i.title },
     })),
-  };
+  }), [incidents]);
+
+  // ── Handlers ───────────────────────────────────────────────────────────────
 
   const handlePinPress = (e: any) => {
     const feature = e.features?.[0];
     if (!feature) return;
-    const id = feature.properties?.id;
-    const found = incidents.find(i => i.id === id);
+    const found = incidents.find(i => i.id === feature.properties?.id);
     if (found) {
       setSelectedIncident(found);
       setCenter([found.longitude, found.latitude]);
@@ -117,13 +385,170 @@ export default function LiveMapScreen() {
     }
   };
 
+  const handleResultPress = (incident: Incident) => {
+    setSelectedIncident(incident);
+    setCenter([incident.longitude, incident.latitude]);
+    setZoom(12);
+    setAnimMode('flyTo');
+    setSearchText('');
+    setSearchFocused(false);
+  };
+
+  const toggleSeverity = (key: Severity) =>
+    setSeverityFilters(prev =>
+      prev.includes(key) ? prev.filter(s => s !== key) : [...prev, key]
+    );
+
+  const toggleType = (key: string) =>
+    setTypeFilters(prev =>
+      prev.includes(key) ? prev.filter(t => t !== key) : [...prev, key]
+    );
+
+  // ── Dropdown visibility ────────────────────────────────────────────────────
+
+  const showDropdown = searchFocused || searchText.length > 0;
+  const showSuggestions = showDropdown && !searchText && nearbySuggestions.length > 0;
+  const showResults     = showDropdown && !!searchText;
+
+  // ── Render helpers ─────────────────────────────────────────────────────────
+
+  function renderFilterChips() {
+    return (
+      <View style={s.filterRow}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={s.filterRowContent}
+          keyboardShouldPersistTaps="handled"
+        >
+          {/* Severity chips */}
+          {SEVERITY_CHIPS.map(chip => {
+            const active = severityFilters.includes(chip.key);
+            return (
+              <TouchableOpacity
+                key={chip.key}
+                onPress={() => toggleSeverity(chip.key)}
+                style={[s.chip, active && { backgroundColor: chip.color, borderColor: chip.color }]}
+                activeOpacity={0.7}
+              >
+                <Text style={[s.chipText, active && { color: '#fff' }]}>{chip.label}</Text>
+              </TouchableOpacity>
+            );
+          })}
+
+          <View style={s.chipDivider} />
+
+          {/* Type chips */}
+          {TYPE_CHIPS.map(chip => {
+            const active = typeFilters.includes(chip.key);
+            return (
+              <TouchableOpacity
+                key={chip.key}
+                onPress={() => toggleType(chip.key)}
+                style={[s.chip, active && { backgroundColor: chip.color, borderColor: chip.color }]}
+                activeOpacity={0.7}
+              >
+                <Text style={[s.chipText, active && { color: '#fff' }]}>{chip.label}</Text>
+              </TouchableOpacity>
+            );
+          })}
+
+          <View style={s.chipDivider} />
+
+          {/* Time chips (single-select) */}
+          {TIME_CHIPS.map(chip => {
+            const active = timeFilter === chip.key;
+            return (
+              <TouchableOpacity
+                key={chip.key}
+                onPress={() => setTimeFilter(chip.key)}
+                style={[s.chip, active && { backgroundColor: TIME_ACTIVE_COLOR, borderColor: TIME_ACTIVE_COLOR }]}
+                activeOpacity={0.7}
+              >
+                <Text style={[s.chipText, active && { color: '#fff' }]}>{chip.label}</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+      </View>
+    );
+  }
+
+  function renderDropdown() {
+    if (!showDropdown) return null;
+
+    if (showSuggestions) {
+      return (
+        <ScrollView
+          style={s.dropdown}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          <Text style={s.suggestionLabel}>Nearby High Risk</Text>
+          {nearbySuggestions.map((incident, idx) => (
+            <TouchableOpacity
+              key={incident.id}
+              style={[s.resultRow, idx < nearbySuggestions.length - 1 && s.resultRowBorder]}
+              onPress={() => handleResultPress(incident)}
+              activeOpacity={0.7}
+            >
+              <View style={[s.severityDot, { backgroundColor: SeverityColors[incident.severity] }]} />
+              <View style={s.resultTextCol}>
+                <Text style={s.resultTitle} numberOfLines={1}>{incident.title}</Text>
+                <Text style={s.resultMeta}>{incident.zone.district}</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={14} color={t.muted} />
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      );
+    }
+
+    if (showResults) {
+      if (!searchResults || searchResults.length === 0) {
+        return (
+          <View style={[s.dropdown, s.noResults]}>
+            <Text style={s.noResultsText}>No results</Text>
+          </View>
+        );
+      }
+      return (
+        <ScrollView
+          style={s.dropdown}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          {searchResults.map((incident, idx) => (
+            <TouchableOpacity
+              key={incident.id}
+              style={[s.resultRow, idx < searchResults.length - 1 && s.resultRowBorder]}
+              onPress={() => handleResultPress(incident)}
+              activeOpacity={0.7}
+            >
+              <View style={[s.severityDot, { backgroundColor: SeverityColors[incident.severity] }]} />
+              <View style={s.resultTextCol}>
+                <Text style={s.resultTitle} numberOfLines={1}>{incident.title}</Text>
+                <Text style={s.resultMeta}>{incident.zone.district}</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={14} color={t.muted} />
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      );
+    }
+
+    return null;
+  }
+
+  // ── Main render ────────────────────────────────────────────────────────────
+
   return (
     <View style={s.container}>
       <MapboxGL.MapView
         style={s.map}
-        styleURL={MapboxGL.StyleURL.Light}
+        styleURL={isDark ? MapboxGL.StyleURL.Dark : MapboxGL.StyleURL.Light}
         scaleBarPosition={{ bottom: 8, left: 8 }}
-        onPress={() => setSelectedIncident(null)}
+        onPress={() => { setSelectedIncident(null); setSearchFocused(false); }}
       >
         <MapboxGL.Camera
           ref={cameraRef}
@@ -139,7 +564,6 @@ export default function LiveMapScreen() {
             shape={geojson as any}
             onPress={handlePinPress}
           >
-            {/* Heatmap filtered by search */}
             <MapboxGL.HeatmapLayer
               id="incidents-heat"
               sourceID="incidents"
@@ -157,7 +581,6 @@ export default function LiveMapScreen() {
               }}
             />
 
-            {/* All incident pins, filtered by search */}
             <MapboxGL.CircleLayer
               id="incidents-points"
               sourceID="incidents"
@@ -177,7 +600,6 @@ export default function LiveMapScreen() {
               }}
             />
 
-            {/* Glow ring around focused/selected incident */}
             <MapboxGL.CircleLayer
               id="focus-glow"
               sourceID="incidents"
@@ -191,7 +613,6 @@ export default function LiveMapScreen() {
               }}
             />
 
-            {/* Focused/selected incident pin on top */}
             <MapboxGL.CircleLayer
               id="focus-pin"
               sourceID="incidents"
@@ -220,64 +641,40 @@ export default function LiveMapScreen() {
         </View>
       )}
 
-      {/* Search bar + results dropdown */}
-      <View style={[s.searchContainer, { top: insets.top + 10 }]}>
-        <View style={s.searchBar}>
-          <Ionicons name="search" size={16} color="#9CA3AF" />
-          <TextInput
-            style={s.searchInput}
-            placeholder="Search incidents or districts…"
-            placeholderTextColor="#9CA3AF"
-            value={searchText}
-            onChangeText={setSearchText}
-            returnKeyType="search"
-            autoCorrect={false}
-            autoCapitalize="none"
-          />
-          {searchText.length > 0 && (
-            <TouchableOpacity
-              onPress={() => setSearchText('')}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            >
-              <Ionicons name="close-circle" size={18} color="#9CA3AF" />
-            </TouchableOpacity>
-          )}
-        </View>
-
-        {filteredIncidents !== null && filteredIncidents.length === 0 && (
-          <View style={s.noResults}>
-            <Text style={s.noResultsText}>No results</Text>
-          </View>
-        )}
-
-        {filteredIncidents !== null && filteredIncidents.length > 0 && (
-          <ScrollView
-            style={s.resultsList}
-            keyboardShouldPersistTaps="handled"
-            showsVerticalScrollIndicator={false}
-          >
-            {filteredIncidents.map((incident, idx) => (
+      {/* Search panel */}
+      <View style={[s.searchShadow, { top: insets.top + 10 }]}>
+        <View style={s.searchPanel}>
+          {/* Search bar */}
+          <View style={s.searchBar}>
+            <Ionicons name="search" size={16} color={t.muted} />
+            <TextInput
+              style={s.searchInput}
+              placeholder="Search incidents or districts…"
+              placeholderTextColor={t.muted}
+              value={searchText}
+              onChangeText={setSearchText}
+              onFocus={() => setSearchFocused(true)}
+              onBlur={() => setSearchFocused(false)}
+              returnKeyType="search"
+              autoCorrect={false}
+              autoCapitalize="none"
+            />
+            {searchText.length > 0 && (
               <TouchableOpacity
-                key={incident.id}
-                style={[
-                  s.resultRow,
-                  idx < filteredIncidents.length - 1 && s.resultRowBorder,
-                ]}
-                onPress={() => handleResultPress(incident)}
-                activeOpacity={0.7}
+                onPress={() => setSearchText('')}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               >
-                <View
-                  style={[s.severityDot, { backgroundColor: SeverityColors[incident.severity] }]}
-                />
-                <View style={s.resultTextCol}>
-                  <Text style={s.resultTitle} numberOfLines={1}>{incident.title}</Text>
-                  <Text style={s.resultDistrict}>{incident.zone.district}</Text>
-                </View>
-                <Ionicons name="chevron-forward" size={14} color="#9CA3AF" />
+                <Ionicons name="close-circle" size={18} color={t.muted} />
               </TouchableOpacity>
-            ))}
-          </ScrollView>
-        )}
+            )}
+          </View>
+
+          {/* Filter chips (always visible) */}
+          {renderFilterChips()}
+
+          {/* Dropdown: suggestions or search results */}
+          {renderDropdown()}
+        </View>
       </View>
 
       {/* Zoom controls */}
@@ -294,7 +691,7 @@ export default function LiveMapScreen() {
       {selectedIncident && (
         <View style={s.sheet}>
           <TouchableOpacity style={s.sheetClose} onPress={() => setSelectedIncident(null)}>
-            <Ionicons name="close" size={20} color="#374151" />
+            <Ionicons name="close" size={20} color={t.sectionTitle} />
           </TouchableOpacity>
 
           <View style={s.sheetBadgeRow}>
@@ -327,158 +724,3 @@ export default function LiveMapScreen() {
     </View>
   );
 }
-
-const s = StyleSheet.create({
-  container: { flex: 1 },
-  map:       { flex: 1 },
-  overlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.35)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-
-  searchContainer: {
-    position: 'absolute',
-    left: 16,
-    right: 16,
-    zIndex: 10,
-    shadowColor: '#000',
-    shadowOpacity: 0.12,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 6,
-    borderRadius: 12,
-  },
-  searchBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    gap: 8,
-  },
-  searchInput: {
-    flex: 1,
-    fontSize: 14,
-    color: '#111827',
-    paddingVertical: 0,
-  },
-
-  noResults: {
-    backgroundColor: '#fff',
-    borderTopWidth: 1,
-    borderTopColor: '#F3F4F6',
-    borderBottomLeftRadius: 12,
-    borderBottomRightRadius: 12,
-    paddingVertical: 14,
-    alignItems: 'center',
-  },
-  noResultsText: {
-    fontSize: 13,
-    color: '#9CA3AF',
-  },
-
-  resultsList: {
-    backgroundColor: '#fff',
-    borderTopWidth: 1,
-    borderTopColor: '#F3F4F6',
-    borderBottomLeftRadius: 12,
-    borderBottomRightRadius: 12,
-    maxHeight: 220,
-  },
-  resultRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 14,
-    paddingVertical: 11,
-    gap: 10,
-  },
-  resultRowBorder: {
-    borderBottomWidth: 1,
-    borderBottomColor: '#F3F4F6',
-  },
-  severityDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    flexShrink: 0,
-  },
-  resultTextCol: {
-    flex: 1,
-  },
-  resultTitle: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#111827',
-  },
-  resultDistrict: {
-    fontSize: 11,
-    color: '#6B7280',
-    marginTop: 1,
-  },
-
-  sheet: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: '#fff',
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
-    padding: 20,
-    paddingBottom: 36,
-    shadowColor: '#000',
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-    elevation: 8,
-  },
-  sheetClose: {
-    position: 'absolute',
-    top: 16,
-    right: 16,
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: '#F3F4F6',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  sheetBadgeRow:    { flexDirection: 'row', gap: 8, marginBottom: 12 },
-  severityBadge:    { borderRadius: 4, paddingHorizontal: 8, paddingVertical: 3 },
-  severityText:     { color: '#fff', fontSize: 11, fontWeight: '700' },
-  lifecycleBadge:   { borderRadius: 4, paddingHorizontal: 8, paddingVertical: 3, borderWidth: 1 },
-  lifecycleText:    { fontSize: 11, fontWeight: '600' },
-  sheetTitle:       { fontSize: 17, fontWeight: '700', color: '#111827', marginBottom: 6 },
-  sheetDesc:        { fontSize: 14, color: '#6B7280', lineHeight: 20, marginBottom: 12 },
-  sheetLocationRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 4 },
-  sheetLocationText:{ fontSize: 13, color: '#374151', fontWeight: '600' },
-  sheetCoords:      { fontSize: 12, color: '#9CA3AF' },
-
-  zoomControls: {
-    position: 'absolute',
-    bottom: 24,
-    right: 16,
-    gap: 8,
-  },
-  zoomBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 10,
-    backgroundColor: '#fff',
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOpacity: 0.12,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 4,
-  },
-  zoomBtnText: {
-    fontSize: 22,
-    fontWeight: '400',
-    color: '#374151',
-    lineHeight: 26,
-  },
-});
