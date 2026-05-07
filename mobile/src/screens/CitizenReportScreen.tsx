@@ -11,11 +11,7 @@ import { API_BASE_URL } from '../constants/api';
 import { useTheme } from '../context/ThemeContext';
 import { LightTheme, DarkTheme, AppTheme } from '../constants/colors';
 
-<<<<<<< Updated upstream
-// ── Static data ───────────────────────────────────────────────────────────────
-=======
 
->>>>>>> Stashed changes
 
 const DISASTER_TYPES = [
   { key: 'Flood',      label: 'Flood',      icon: 'water',                color: '#0EA5E9' },
@@ -36,11 +32,7 @@ const SEVERITY_LEVELS = [
 type DisasterType = typeof DISASTER_TYPES[number]['key'] | null;
 type SeverityKey  = typeof SEVERITY_LEVELS[number]['key'] | null;
 
-<<<<<<< Updated upstream
-// ── Styles ────────────────────────────────────────────────────────────────────
-=======
 
->>>>>>> Stashed changes
 
 function makeStyles(t: AppTheme) {
   return StyleSheet.create({
@@ -56,11 +48,7 @@ function makeStyles(t: AppTheme) {
     optionalTag:  { fontSize: 11, color: t.muted, fontStyle: 'italic' },
     requiredStar: { fontSize: 13, fontWeight: '700', color: '#DC2626' },
 
-<<<<<<< Updated upstream
-    // ── Type grid ──────────────────────────────────────────────────────────
-=======
 
->>>>>>> Stashed changes
     typeGrid: {
       flexDirection: 'row',
       flexWrap: 'wrap',
@@ -95,10 +83,6 @@ function makeStyles(t: AppTheme) {
       textAlign: 'center',
     },
 
-<<<<<<< Updated upstream
-    // ── Severity stepper ──────────────────────────────────────────────────
-=======
->>>>>>> Stashed changes
     severityRow: {
       flexDirection: 'row',
       height: 44,
@@ -111,13 +95,6 @@ function makeStyles(t: AppTheme) {
     },
     segFirst: { borderTopLeftRadius: 8, borderBottomLeftRadius: 8 },
     segLast:  { borderTopRightRadius: 8, borderBottomRightRadius: 8 },
-<<<<<<< Updated upstream
-    severitySegText: {
-      fontSize: 11,
-      fontWeight: '700',
-    },
-=======
->>>>>>> Stashed changes
     severityLabelRow: {
       flexDirection: 'row',
       marginTop: 5,
@@ -130,10 +107,6 @@ function makeStyles(t: AppTheme) {
       color: t.muted,
     },
 
-<<<<<<< Updated upstream
-    // ── Description ───────────────────────────────────────────────────────
-=======
->>>>>>> Stashed changes
     textarea: {
       backgroundColor: t.inputBg,
       borderRadius: 10,
@@ -145,10 +118,6 @@ function makeStyles(t: AppTheme) {
       minHeight: 72,
     },
 
-<<<<<<< Updated upstream
-    // ── Location button ───────────────────────────────────────────────────
-=======
->>>>>>> Stashed changes
     locationBtn: {
       backgroundColor: '#2563EB',
       borderRadius: 10,
@@ -163,18 +132,10 @@ function makeStyles(t: AppTheme) {
       borderColor: '#2563EB',
       backgroundColor: t.card,
     },
-<<<<<<< Updated upstream
-    locationBtnText: { color: '#fff', fontWeight: '600', fontSize: 14 },
-    locationBtnTextSet: { color: '#2563EB' },
-    locationCoords: { fontSize: 12, color: '#2563EB', marginTop: 6, textAlign: 'center', fontWeight: '600' },
-
-    // ── Photo ─────────────────────────────────────────────────────────────
-=======
     locationBtnText:    { color: '#fff', fontWeight: '600', fontSize: 14 },
     locationBtnTextSet: { color: '#2563EB' },
     locationCoords:     { fontSize: 12, color: '#2563EB', marginTop: 6, textAlign: 'center', fontWeight: '600' },
 
->>>>>>> Stashed changes
     photoBtn: {
       backgroundColor: t.card,
       borderRadius: 10,
@@ -189,10 +150,6 @@ function makeStyles(t: AppTheme) {
     photoBtnText: { color: t.sectionTitle, fontWeight: '600', fontSize: 14 },
     preview:      { width: '100%', height: 180, borderRadius: 10, marginTop: 10 },
 
-<<<<<<< Updated upstream
-    // ── Submit ────────────────────────────────────────────────────────────
-=======
->>>>>>> Stashed changes
     submitBtn: {
       backgroundColor: '#DC2626',
       borderRadius: 12,
@@ -208,10 +165,6 @@ function makeStyles(t: AppTheme) {
   });
 }
 
-<<<<<<< Updated upstream
-// ── Component ─────────────────────────────────────────────────────────────────
-=======
->>>>>>> Stashed changes
 
 export default function CitizenReportScreen() {
   const { isDark } = useTheme();
@@ -228,10 +181,6 @@ export default function CitizenReportScreen() {
 
   const selectedSevIdx = SEVERITY_LEVELS.findIndex(l => l.key === severity);
 
-<<<<<<< Updated upstream
-  // ── Handlers ───────────────────────────────────────────────────────────────
-=======
->>>>>>> Stashed changes
 
   const toggleType = (key: DisasterType) =>
     setDisasterType(prev => (prev === key ? null : key));
@@ -304,10 +253,6 @@ export default function CitizenReportScreen() {
 
   const canSubmit = !!disasterType && !!location;
 
-<<<<<<< Updated upstream
-  // ── Render ─────────────────────────────────────────────────────────────────
-=======
->>>>>>> Stashed changes
 
   return (
     <SafeAreaView style={s.container}>
@@ -328,14 +273,7 @@ export default function CitizenReportScreen() {
               return (
                 <TouchableOpacity
                   key={type.key}
-<<<<<<< Updated upstream
-                  style={[
-                    s.typeCard,
-                    active && { borderColor: type.color },
-                  ]}
-=======
                   style={[s.typeCard, active && { borderColor: type.color }]}
->>>>>>> Stashed changes
                   onPress={() => toggleType(type.key)}
                   activeOpacity={0.75}
                 >
@@ -367,21 +305,12 @@ export default function CitizenReportScreen() {
           <View style={s.severityRow}>
             {SEVERITY_LEVELS.map((level, i) => {
               const filled = selectedSevIdx >= 0 && i <= selectedSevIdx;
-<<<<<<< Updated upstream
-              const segBg  = filled ? level.color : t.border;
-              const textColor = filled ? '#fff' : t.muted;
-=======
->>>>>>> Stashed changes
               return (
                 <TouchableOpacity
                   key={level.key}
                   style={[
                     s.severitySegment,
-<<<<<<< Updated upstream
-                    { backgroundColor: segBg },
-=======
                     { backgroundColor: filled ? level.color : t.border },
->>>>>>> Stashed changes
                     i === 0 && s.segFirst,
                     i === SEVERITY_LEVELS.length - 1 && s.segLast,
                   ]}
