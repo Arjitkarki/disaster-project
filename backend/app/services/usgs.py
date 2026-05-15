@@ -39,7 +39,7 @@ async def fetch_incidents(days_back: int = 30) -> List[Incident]:
     incidents: List[Incident] = []
     for feature in data.get('features', []):
         props  = feature['properties']
-        coords = feature['geometry']['coordinates']
+        coords = feature['geometry']['coordinates'] #lat/long
         mag    = float(props.get('mag') or 0.0)
         place  = props.get('place') or 'Nepal'
         time_ms = int(props.get('time') or 0)

@@ -1,2 +1,29 @@
-#IDE
+# IDE
 .idea/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+*.egg-info/
+dist/
+.env
+
+# React Native / Expo
+node_modules/
+.expo/
+*.orig.*
+web-build/
+
+# Firebase credentials — never commit these
+mobile/firebase/google-services.json
+mobile/firebase/GoogleService-Info.plist
+
+# iOS / Android build artifacts
+mobile/ios/Pods/
+mobile/android/.gradle/
+mobile/android/build/
+
+# OS
+.DS_Store
