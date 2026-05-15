@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   View, Text, FlatList, StyleSheet, ActivityIndicator,
   RefreshControl, TouchableOpacity, ScrollView,
@@ -40,12 +40,17 @@ export default function FeedScreen() {
   const [reports, setReports] = useState<ReportResponse[]>([]);
   const [sortMode, setSortMode] = useState<'newest' | 'oldest'>('newest');
 
-  useEffect(() => {
+  const fetchReports = useCallback(() => {
     fetch(`${API_BASE_URL}/api/v1/reports`)
       .then(r => r.json())
       .then(data => setReports(Array.isArray(data) ? data : []))
       .catch(() => {});
   }, []);
+
+  useEffect(() => {
+    fetchReports();
+    return navigation.addListener('focus', fetchReports);
+  }, [navigation, fetchReports]);
 
   const feedItems = useMemo<FeedItem[]>(() => {
     const incidentItems = incidents
@@ -128,7 +133,7 @@ export default function FeedScreen() {
           data={feedItems}
           keyExtractor={item => item.kind + item.data.id}
           contentContainerStyle={s.listContent}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} />}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { refresh(); fetchReports(); }} />}
           ListEmptyComponent={<EmptyFeed />}
           renderItem={({ item }) =>
             item.kind === 'incident'
