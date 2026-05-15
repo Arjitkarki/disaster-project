@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View, Text, StyleSheet, ActivityIndicator,
   TouchableOpacity, TextInput, ScrollView,
@@ -17,6 +17,7 @@ import { useTheme } from '../context/ThemeContext';
 MapboxGL.setAccessToken(MAPBOX_TOKEN);
 
 const NEPAL_CENTER: [number, number] = [84.124, 28.394];
+const INITIAL_ZOOM = 6;
 
 type LiveMapRoute = RouteProp<RootTabParamList, 'LiveMap'>;
 type TimeWindow = 'all' | '24hr' | '7d';
@@ -30,6 +31,11 @@ type FeatureCollection = {
   }>;
 };
 
+type PlaceResult = {
+  name: string;
+  place: string;
+  coordinates: [number, number];
+};
 
 const SEVERITY_CHIPS: { key: Severity; label: string; color: string }[] = [
   { key: 'CRITICAL', label: 'Critical', color: '#DC2626' },
@@ -273,6 +279,7 @@ export default function LiveMapScreen() {
   const [selectedIncident, setSelectedIncident] = useState<Incident | null>(null);
   const [searchText, setSearchText]             = useState('');
   const [searchFocused, setSearchFocused]       = useState(false);
+  const [placeResults, setPlaceResults]         = useState<PlaceResult[]>([]);
 
   const [severityFilters, setSeverityFilters] = useState<Severity[]>([]);
   const [typeFilters, setTypeFilters]         = useState<string[]>([]);
@@ -283,31 +290,54 @@ export default function LiveMapScreen() {
   const focusId  = route.params?.focusId ?? '';
 
   const cameraRef = useRef<MapboxGL.Camera>(null);
-  const [center, setCenter]     = useState<[number, number]>(NEPAL_CENTER);
-  const [zoom, setZoom]         = useState(6);
-  const [animMode, setAnimMode] = useState<'flyTo' | 'moveTo'>('moveTo');
+  // center is only used for nearbySuggestions sorting, not passed to Camera
+  const [center, setCenter] = useState<[number, number]>(NEPAL_CENTER);
+  const zoomRef = useRef(INITIAL_ZOOM);
+
+  const flyTo = useCallback((coords: [number, number], zoom = 12) => {
+    zoomRef.current = zoom;
+    setCenter(coords);
+    cameraRef.current?.setCamera({
+      centerCoordinate: coords,
+      zoomLevel: zoom,
+      animationDuration: 900,
+      animationMode: 'flyTo',
+    });
+  }, []);
 
   useFocusEffect(
     useCallback(() => {
       if (focusLat != null && focusLng != null) {
-        setCenter([focusLng, focusLat]);
-        setZoom(12);
-        setAnimMode('flyTo');
-        cameraRef.current?.setCamera({
-          centerCoordinate: [focusLng, focusLat],
-          zoomLevel: 12,
-          animationDuration: 900,
-          animationMode: 'flyTo',
-        });
+        flyTo([focusLng, focusLat], 12);
         if (focusId) {
           const found = incidents.find(i => i.id === focusId);
           if (found) setSelectedIncident(found);
         }
       }
-    }, [focusLat, focusLng, focusId, incidents])
+    }, [focusLat, focusLng, focusId, incidents, flyTo])
   );
 
- 
+  // Mapbox geocoding for place search
+  useEffect(() => {
+    const q = searchText.trim();
+    if (!q) { setPlaceResults([]); return; }
+    const timer = setTimeout(async () => {
+      try {
+        const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(q)}.json?country=NP&access_token=${MAPBOX_TOKEN}&limit=5`;
+        const res = await fetch(url);
+        const json = await res.json();
+        const places: PlaceResult[] = (json.features ?? []).map((f: any) => ({
+          name: f.text,
+          place: f.place_name,
+          coordinates: f.geometry.coordinates as [number, number],
+        }));
+        setPlaceResults(places);
+      } catch {
+        setPlaceResults([]);
+      }
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [searchText]);
 
   const activeIncidents = useMemo(() => {
     return incidents.filter(i => {
@@ -361,26 +391,28 @@ export default function LiveMapScreen() {
   }), [incidents]);
 
 
-
   const handlePinPress = (e: any) => {
     const feature = e.features?.[0];
     if (!feature) return;
     const found = incidents.find(i => i.id === feature.properties?.id);
     if (found) {
       setSelectedIncident(found);
-      setCenter([found.longitude, found.latitude]);
-      setZoom(12);
-      setAnimMode('flyTo');
+      flyTo([found.longitude, found.latitude], 12);
     }
   };
 
   const handleResultPress = (incident: Incident) => {
     setSelectedIncident(incident);
-    setCenter([incident.longitude, incident.latitude]);
-    setZoom(12);
-    setAnimMode('flyTo');
+    flyTo([incident.longitude, incident.latitude], 12);
     setSearchText('');
     setSearchFocused(false);
+  };
+
+  const handlePlacePress = (place: PlaceResult) => {
+    flyTo(place.coordinates, 12);
+    setSearchText('');
+    setSearchFocused(false);
+    setPlaceResults([]);
   };
 
   const toggleSeverity = (key: Severity) =>
@@ -394,11 +426,9 @@ export default function LiveMapScreen() {
     );
 
 
-
   const showDropdown    = searchFocused || searchText.length > 0;
   const showSuggestions = showDropdown && !searchText && nearbySuggestions.length > 0;
   const showResults     = showDropdown && !!searchText;
-
 
 
   function renderFilterChips() {
@@ -491,34 +521,64 @@ export default function LiveMapScreen() {
     }
 
     if (showResults) {
-      if (!searchResults || searchResults.length === 0) {
+      const hasIncidents = searchResults && searchResults.length > 0;
+      const hasPlaces = placeResults.length > 0;
+
+      if (!hasIncidents && !hasPlaces) {
         return (
           <View style={[s.dropdown, s.noResults]}>
             <Text style={s.noResultsText}>No results</Text>
           </View>
         );
       }
+
       return (
         <ScrollView
           style={s.dropdown}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          {searchResults.map((incident, idx) => (
-            <TouchableOpacity
-              key={incident.id}
-              style={[s.resultRow, idx < searchResults.length - 1 && s.resultRowBorder]}
-              onPress={() => handleResultPress(incident)}
-              activeOpacity={0.7}
-            >
-              <View style={[s.severityDot, { backgroundColor: SeverityColors[incident.severity] }]} />
-              <View style={s.resultTextCol}>
-                <Text style={s.resultTitle} numberOfLines={1}>{incident.title}</Text>
-                <Text style={s.resultMeta}>{incident.zone.district}</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={14} color={t.muted} />
-            </TouchableOpacity>
-          ))}
+          {hasIncidents && (
+            <>
+              <Text style={s.suggestionLabel}>Incidents</Text>
+              {searchResults!.map((incident, idx) => (
+                <TouchableOpacity
+                  key={incident.id}
+                  style={[s.resultRow, (idx < searchResults!.length - 1 || hasPlaces) && s.resultRowBorder]}
+                  onPress={() => handleResultPress(incident)}
+                  activeOpacity={0.7}
+                >
+                  <View style={[s.severityDot, { backgroundColor: SeverityColors[incident.severity] }]} />
+                  <View style={s.resultTextCol}>
+                    <Text style={s.resultTitle} numberOfLines={1}>{incident.title}</Text>
+                    <Text style={s.resultMeta}>{incident.zone.district}</Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={14} color={t.muted} />
+                </TouchableOpacity>
+              ))}
+            </>
+          )}
+
+          {hasPlaces && (
+            <>
+              <Text style={s.suggestionLabel}>Places in Nepal</Text>
+              {placeResults.map((place, idx) => (
+                <TouchableOpacity
+                  key={place.place}
+                  style={[s.resultRow, idx < placeResults.length - 1 && s.resultRowBorder]}
+                  onPress={() => handlePlacePress(place)}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="location-outline" size={14} color={t.muted} />
+                  <View style={s.resultTextCol}>
+                    <Text style={s.resultTitle} numberOfLines={1}>{place.name}</Text>
+                    <Text style={s.resultMeta} numberOfLines={1}>{place.place}</Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={14} color={t.muted} />
+                </TouchableOpacity>
+              ))}
+            </>
+          )}
         </ScrollView>
       );
     }
@@ -526,7 +586,7 @@ export default function LiveMapScreen() {
     return null;
   }
 
- 
+
 
   return (
     <View style={s.container}>
@@ -535,13 +595,17 @@ export default function LiveMapScreen() {
         styleURL={isDark ? MapboxGL.StyleURL.Dark : MapboxGL.StyleURL.Light}
         scaleBarPosition={{ bottom: 8, left: 8 }}
         onPress={() => { setSelectedIncident(null); setSearchFocused(false); }}
+        zoomEnabled
+        scrollEnabled
+        rotateEnabled
+        pitchEnabled
       >
         <MapboxGL.Camera
           ref={cameraRef}
-          zoomLevel={zoom}
-          centerCoordinate={center}
-          animationMode={animMode}
-          animationDuration={animMode === 'flyTo' ? 1000 : 0}
+          defaultSettings={{
+            centerCoordinate: NEPAL_CENTER,
+            zoomLevel: INITIAL_ZOOM,
+          }}
         />
 
         {!loading && (
@@ -634,7 +698,7 @@ export default function LiveMapScreen() {
             <Ionicons name="search" size={16} color={t.muted} />
             <TextInput
               style={s.searchInput}
-              placeholder="Search incidents or districts…"
+              placeholder="Search incidents, districts or places…"
               placeholderTextColor={t.muted}
               value={searchText}
               onChangeText={setSearchText}
@@ -646,7 +710,7 @@ export default function LiveMapScreen() {
             />
             {searchText.length > 0 && (
               <TouchableOpacity
-                onPress={() => setSearchText('')}
+                onPress={() => { setSearchText(''); setPlaceResults([]); }}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               >
                 <Ionicons name="close-circle" size={18} color={t.muted} />
@@ -661,10 +725,22 @@ export default function LiveMapScreen() {
 
       {/* Zoom controls */}
       <View style={s.zoomControls}>
-        <TouchableOpacity style={s.zoomBtn} onPress={() => setZoom(z => Math.min(z + 1, 20))}>
+        <TouchableOpacity
+          style={s.zoomBtn}
+          onPress={() => {
+            zoomRef.current = Math.min(zoomRef.current + 1, 20);
+            cameraRef.current?.setCamera({ zoomLevel: zoomRef.current, animationDuration: 200 });
+          }}
+        >
           <Text style={s.zoomBtnText}>+</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={s.zoomBtn} onPress={() => setZoom(z => Math.max(z - 1, 1))}>
+        <TouchableOpacity
+          style={s.zoomBtn}
+          onPress={() => {
+            zoomRef.current = Math.max(zoomRef.current - 1, 1);
+            cameraRef.current?.setCamera({ zoomLevel: zoomRef.current, animationDuration: 200 });
+          }}
+        >
           <Text style={s.zoomBtnText}>−</Text>
         </TouchableOpacity>
       </View>

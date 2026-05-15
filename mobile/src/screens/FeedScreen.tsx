@@ -25,6 +25,16 @@ const FILTER_LABELS: Record<string, string> = {
   null: 'All', CRITICAL: 'Critical', HIGH: 'High', MODERATE: 'Moderate', LOW: 'Low',
 };
 
+function detectDisasterType(description: string): string {
+  const text = description.toLowerCase();
+  if (text.includes('earthquake') || text.includes('tremor') || text.includes('quake')) return 'Earthquake Report';
+  if (text.includes('flood') || text.includes('flooding')) return 'Flood Report';
+  if (text.includes('landslide') || text.includes('land slide')) return 'Landslide Report';
+  if (text.includes('fire') || text.includes('wildfire')) return 'Fire Report';
+  if (text.includes('heat') || text.includes('heatwave')) return 'Heatwave Report';
+  return 'Citizen Report';
+}
+
 function timeAgo(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
   const m = Math.floor(diff / 60_000);
@@ -278,7 +288,7 @@ function ReportCard({ item, s }: { item: ReportResponse; s: S }) {
           <Text style={s.timeAgo}>{timeAgo(item.submitted_at)}</Text>
         </View>
 
-        <Text style={s.title}>Citizen Report</Text>
+        <Text style={s.title}>{detectDisasterType(item.description)}</Text>
         <Text style={s.description} numberOfLines={2}>{item.description}</Text>
 
         <View style={s.locationRow}>
