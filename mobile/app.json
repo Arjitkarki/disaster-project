@@ -31,9 +31,7 @@
     "plugins": [
       [
         "@rnmapbox/maps",
-        {
-          "RNMapboxMapsDownloadToken": "pk.eyJ1IjoiYXJqaXRrYXJraSIsImEiOiJjbW9pMXk0aDYwNWFxMnBvbnk4YTVlMzVpIn0.m049YU_Jw8h1mrRnuUhxhw"
-        }
+        {}
       ]
     ]
   }

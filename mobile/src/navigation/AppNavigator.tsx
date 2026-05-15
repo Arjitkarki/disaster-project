@@ -8,6 +8,8 @@ import FeedScreen from '../screens/FeedScreen';
 import LiveMapScreen from '../screens/LiveMapScreen';
 import CitizenReportScreen from '../screens/CitizenReportScreen';
 import SupportScreen from '../screens/SupportScreen';
+import { useTheme } from '../context/ThemeContext';
+import { DarkTheme, LightTheme } from '../constants/colors';
 
 export type RootTabParamList = {
   Dashboard: undefined;
@@ -28,6 +30,9 @@ const TAB_ICONS: Record<string, [string, string]> = {
 };
 
 export default function AppNavigator() {
+  const { isDark } = useTheme();
+  const t = isDark ? DarkTheme : LightTheme;
+
   return (
     <NavigationContainer>
       <Tab.Navigator
@@ -43,8 +48,11 @@ export default function AppNavigator() {
             );
           },
           tabBarActiveTintColor: '#DC2626',
-          tabBarInactiveTintColor: '#6B7280',
-          tabBarStyle: { borderTopColor: '#E5E7EB' },
+          tabBarInactiveTintColor: t.muted,
+          tabBarStyle: {
+            borderTopColor: t.border,
+            backgroundColor: t.bg,
+          },
           headerShown: false,
         })}
       >

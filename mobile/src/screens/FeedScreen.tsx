@@ -8,9 +8,10 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { Incident, ReportResponse, Severity } from '../types';
-import { SeverityColors, LifecycleColors } from '../constants/colors';
+import { SeverityColors, LifecycleColors, LightTheme, DarkTheme, AppTheme } from '../constants/colors';
 import { RootTabParamList } from '../navigation/AppNavigator';
 import { useIncidents } from '../context/IncidentsContext';
+import { useTheme } from '../context/ThemeContext';
 import { API_BASE_URL } from '../constants/api';
 
 type Nav = BottomTabNavigationProp<RootTabParamList>;
@@ -33,9 +34,70 @@ function timeAgo(iso: string): string {
   return `${Math.floor(h / 24)}d ago`;
 }
 
+function makeStyles(t: AppTheme) {
+  return StyleSheet.create({
+    container:  { flex: 1, backgroundColor: t.bg },
+    header:     { backgroundColor: t.bg },
+    heading:    { fontSize: 24, fontWeight: '700', color: t.text, padding: 16, paddingBottom: 10 },
+    pillsScroll: { height: 44 },
+    filters:    { paddingHorizontal: 16, alignItems: 'center', gap: 8 },
+    list:       { flex: 1 },
+    listContent: { paddingHorizontal: 16, paddingTop: 4, paddingBottom: 24 },
+    pill: {
+      paddingHorizontal: 18, paddingVertical: 7, borderRadius: 20,
+      borderWidth: 1.5, borderColor: t.pillBorder, backgroundColor: t.card,
+    },
+    pillText:       { fontSize: 13, fontWeight: '600', color: t.sectionTitle },
+    pillTextActive: { color: t.activePillText },
+    sortRow: {
+      paddingHorizontal: 16,
+      paddingBottom: 10,
+      alignItems: 'flex-end',
+    },
+    sortBtn: {
+      flexDirection: 'row', alignItems: 'center', gap: 5,
+      paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20,
+      borderWidth: 1.5, borderColor: t.pillBorder, backgroundColor: t.card,
+    },
+    sortBtnText: { fontSize: 12, fontWeight: '600', color: t.sectionTitle },
+
+    card: {
+      flexDirection: 'row', backgroundColor: t.card, borderRadius: 14,
+      marginBottom: 10, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 6,
+      shadowOffset: { width: 0, height: 2 }, elevation: 3,
+      overflow: 'hidden',
+    },
+    accentBar:      { width: 4 },
+    cardInner:      { flex: 1, padding: 16 },
+    cardHeader:     { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
+    severityBadge:  { borderRadius: 4, paddingHorizontal: 8, paddingVertical: 3 },
+    severityText:   { color: '#fff', fontSize: 11, fontWeight: '700' },
+    lifecycleBadge: { borderRadius: 4, paddingHorizontal: 8, paddingVertical: 3, borderWidth: 1 },
+    lifecycleText:  { fontSize: 11, fontWeight: '600' },
+    timeAgo:        { marginLeft: 'auto', fontSize: 12, color: t.muted },
+    title:          { fontSize: 15, fontWeight: '700', color: t.text, marginBottom: 4 },
+    description:    { fontSize: 13, color: t.subtext, lineHeight: 18, marginBottom: 10 },
+
+    cardFooter:    { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
+    locationBlock: { flex: 1 },
+    locationRow:   { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 3 },
+    locationText:  { fontSize: 13, color: t.sectionTitle, fontWeight: '600' },
+    coords:        { fontSize: 11, color: t.muted, marginLeft: 17 },
+    mapBtn:        { padding: 4, marginTop: 1 },
+
+    emptyState:    { alignItems: 'center', paddingTop: 64, paddingBottom: 24 },
+    emptyTitle:    { fontSize: 15, fontWeight: '700', color: t.sectionTitle, marginTop: 14 },
+    emptySubtitle: { fontSize: 13, color: t.muted, marginTop: 4 },
+  });
+}
+
 export default function FeedScreen() {
   const navigation = useNavigation<Nav>();
   const { incidents, loading, refreshing, refresh } = useIncidents();
+  const { isDark } = useTheme();
+  const t = isDark ? DarkTheme : LightTheme;
+  const s = useMemo(() => makeStyles(t), [t]);
+
   const [severityFilter, setSeverityFilter] = useState<Severity | null>(null);
   const [reports, setReports] = useState<ReportResponse[]>([]);
   const [sortMode, setSortMode] = useState<'newest' | 'oldest'>('newest');
@@ -80,7 +142,6 @@ export default function FeedScreen() {
 
   return (
     <SafeAreaView style={s.container}>
-      {/* Locked header — never reflowed by list content */}
       <View style={s.header}>
         <Text style={s.heading}>Feed</Text>
 
@@ -95,7 +156,7 @@ export default function FeedScreen() {
             return (
               <TouchableOpacity
                 key={String(f)}
-                style={[s.pill, active && { backgroundColor: '#111827', borderColor: '#111827' }]}
+                style={[s.pill, active && { backgroundColor: t.activePillBg, borderColor: t.activePillBg }]}
                 onPress={() => setSeverityFilter(f)}
                 activeOpacity={0.7}
               >
@@ -116,7 +177,7 @@ export default function FeedScreen() {
             <Ionicons
               name={sortMode === 'newest' ? 'arrow-down-outline' : 'arrow-up-outline'}
               size={13}
-              color="#374151"
+              color={t.sectionTitle}
             />
             <Text style={s.sortBtnText}>
               {sortMode === 'newest' ? 'Newest first' : 'Oldest first'}
@@ -134,11 +195,11 @@ export default function FeedScreen() {
           keyExtractor={item => item.kind + item.data.id}
           contentContainerStyle={s.listContent}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { refresh(); fetchReports(); }} />}
-          ListEmptyComponent={<EmptyFeed />}
+          ListEmptyComponent={<EmptyFeed s={s} />}
           renderItem={({ item }) =>
             item.kind === 'incident'
-              ? <IncidentCard item={item.data} onViewMap={viewOnMap} />
-              : <ReportCard item={item.data} />
+              ? <IncidentCard item={item.data} onViewMap={viewOnMap} s={s} />
+              : <ReportCard item={item.data} s={s} />
           }
         />
       )}
@@ -146,7 +207,9 @@ export default function FeedScreen() {
   );
 }
 
-function EmptyFeed() {
+type S = ReturnType<typeof makeStyles>;
+
+function EmptyFeed({ s }: { s: S }) {
   return (
     <View style={s.emptyState}>
       <Ionicons name="search-outline" size={42} color="#D1D5DB" />
@@ -156,7 +219,7 @@ function EmptyFeed() {
   );
 }
 
-function IncidentCard({ item, onViewMap }: { item: Incident; onViewMap: (i: Incident) => void }) {
+function IncidentCard({ item, onViewMap, s }: { item: Incident; onViewMap: (i: Incident) => void; s: S }) {
   return (
     <View style={s.card}>
       <View style={[s.accentBar, { backgroundColor: SeverityColors[item.severity] }]} />
@@ -198,7 +261,7 @@ function IncidentCard({ item, onViewMap }: { item: Incident; onViewMap: (i: Inci
   );
 }
 
-function ReportCard({ item }: { item: ReportResponse }) {
+function ReportCard({ item, s }: { item: ReportResponse; s: S }) {
   return (
     <View style={s.card}>
       <View style={[s.accentBar, { backgroundColor: '#7C3AED' }]} />
@@ -228,58 +291,3 @@ function ReportCard({ item }: { item: ReportResponse }) {
     </View>
   );
 }
-
-const s = StyleSheet.create({
-  container:  { flex: 1, backgroundColor: '#F9FAFB' },
-  header:     { backgroundColor: '#F9FAFB' },
-  heading:    { fontSize: 24, fontWeight: '700', color: '#111827', padding: 16, paddingBottom: 10 },
-  pillsScroll: { height: 44 },
-  filters:    { paddingHorizontal: 16, alignItems: 'center', gap: 8 },
-  list:       { flex: 1 },
-  listContent: { paddingHorizontal: 16, paddingTop: 4, paddingBottom: 24 },
-  pill: {
-    paddingHorizontal: 18, paddingVertical: 7, borderRadius: 20,
-    borderWidth: 1.5, borderColor: '#D1D5DB', backgroundColor: '#fff',
-  },
-  pillText:       { fontSize: 13, fontWeight: '600', color: '#374151' },
-  pillTextActive: { color: '#fff' },
-  sortRow: {
-    paddingHorizontal: 16,
-    paddingBottom: 10,
-    alignItems: 'flex-end',
-  },
-  sortBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 5,
-    paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20,
-    borderWidth: 1.5, borderColor: '#D1D5DB', backgroundColor: '#fff',
-  },
-  sortBtnText: { fontSize: 12, fontWeight: '600', color: '#374151' },
-
-  card: {
-    flexDirection: 'row', backgroundColor: '#fff', borderRadius: 14,
-    marginBottom: 10, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 6,
-    shadowOffset: { width: 0, height: 2 }, elevation: 3,
-    overflow: 'hidden',
-  },
-  accentBar:      { width: 4 },
-  cardInner:      { flex: 1, padding: 16 },
-  cardHeader:     { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
-  severityBadge:  { borderRadius: 4, paddingHorizontal: 8, paddingVertical: 3 },
-  severityText:   { color: '#fff', fontSize: 11, fontWeight: '700' },
-  lifecycleBadge: { borderRadius: 4, paddingHorizontal: 8, paddingVertical: 3, borderWidth: 1 },
-  lifecycleText:  { fontSize: 11, fontWeight: '600' },
-  timeAgo:        { marginLeft: 'auto', fontSize: 12, color: '#9CA3AF' },
-  title:          { fontSize: 15, fontWeight: '700', color: '#111827', marginBottom: 4 },
-  description:    { fontSize: 13, color: '#6B7280', lineHeight: 18, marginBottom: 10 },
-
-  cardFooter:    { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
-  locationBlock: { flex: 1 },
-  locationRow:   { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 3 },
-  locationText:  { fontSize: 13, color: '#374151', fontWeight: '600' },
-  coords:        { fontSize: 11, color: '#B0B8C4', marginLeft: 17 },
-  mapBtn:        { padding: 4, marginTop: 1 },
-
-  emptyState:    { alignItems: 'center', paddingTop: 64, paddingBottom: 24 },
-  emptyTitle:    { fontSize: 15, fontWeight: '700', color: '#374151', marginTop: 14 },
-  emptySubtitle: { fontSize: 13, color: '#9CA3AF', marginTop: 4 },
-});
