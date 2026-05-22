@@ -68,7 +68,7 @@ Skip this step if you are using the iOS Simulator — leave it as `localhost`.
 ```bash
 cd backend
 source .venv/bin/activate
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ```
 
 - `source .venv/bin/activate` — activates the Python virtual environment where your dependencies are installed. Without this, Python won't find FastAPI, uvicorn, or any other package.
@@ -110,6 +110,8 @@ You should see a JSON array of incidents. If you see an error or a blank page, t
 | Mapbox map blank / 401 error | Token not embedded in native build | Rebuild with `expo run:ios` |
 | Backend changes not showing up | Server not running with `--reload` | Restart uvicorn with the `--reload` flag |
 | `ModuleNotFoundError` in backend | Virtual environment not activated | Run `source .venv/bin/activate` first |
+| `Error loading ASGI app. Could not import module "app.main"` | Wrong module path — `main.py` is at `backend/main.py`, not `backend/app/main.py` | Use `uvicorn main:app`, not `uvicorn app.main:app` |
+| `[Errno 48] Address already in use` | Another process is already on port 8000 | Run `lsof -ti:8000 \| xargs kill -9`, then retry |
 
 ---
 
