@@ -90,6 +90,22 @@ This starts the Expo development server, which is a tool that bundles your JavaS
 
 ---
 
+## Killing a port that's already in use
+
+If uvicorn complains `[Errno 48] Address already in use`, another process is holding port 8000. Kill it:
+
+```bash
+lsof -ti:8000 | xargs kill -9
+```
+
+Then restart normally. If you'd rather not kill the process, run on a different port and update `mobile/.env` to match:
+
+```bash
+uvicorn main:app --reload --host 0.0.0.0 --port 8001
+```
+
+---
+
 ## Verifying the backend is up
 
 Before running the app, confirm the backend is actually responding. Open this in your browser:
