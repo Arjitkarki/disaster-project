@@ -8,18 +8,16 @@
 # The Supabase Python SDK (supabase-py) wraps the Supabase REST API.
 # Every table operation (select, insert, update, delete) goes through this client.
 
+from typing import Optional
 from supabase import create_client, Client
 
-# Pull the URL and service key from config.py, which reads them from .env
 from ..core.config import SUPABASE_URL, SUPABASE_SERVICE_KEY
 
-# create_client() connects to your Supabase project.
-#
-# Why SUPABASE_SERVICE_KEY and not SUPABASE_ANON_KEY?
-#   - The anon key is for client-side (browser/mobile) use and is restricted by
-#     Row Level Security (RLS) policies.
-#   - The service key bypasses RLS entirely — it's for trusted server-side code.
-#   - We use it here because this runs on the backend, never exposed to the app.
-#
-# The client is created once at import time and reused for all requests.
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
+# Only create the client when both env vars are present.
+# supabase==2.30+ raises SupabaseException on empty strings, so we guard here.
+# While Supabase is dormant (no tables yet), this will be None.
+supabase: Optional[Client] = (
+    create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
+    if SUPABASE_URL and SUPABASE_SERVICE_KEY
+    else None
+)
