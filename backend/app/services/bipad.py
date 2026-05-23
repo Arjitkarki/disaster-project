@@ -67,7 +67,7 @@ def fetch_bipad_alerts() -> List[Incident]:
     try:
         response = httpx.get(
             BIPAD_ALERT_URL,
-            params={'limit': 100, 'public': 'true'},
+            params={'limit': 100, 'public': 'true', 'ordering': '-id'},
             timeout=10.0,
         )
         response.raise_for_status()
