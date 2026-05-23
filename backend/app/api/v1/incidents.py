@@ -2,7 +2,7 @@ from fastapi import APIRouter
 from typing import List
 
 from ...models.incident import Incident
-from ...services.staticdata import fetch_incidents
+from ...services.bipad import fetch_bipad_alerts as fetch_incidents
 
 router = APIRouter()
 

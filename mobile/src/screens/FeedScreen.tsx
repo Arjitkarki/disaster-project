@@ -25,13 +25,32 @@ const FILTER_LABELS: Record<string, string> = {
   null: 'All', CRITICAL: 'Critical', HIGH: 'High', MODERATE: 'Moderate', LOW: 'Low',
 };
 
+type DisasterType = 'EARTHQUAKE' | 'FLOOD' | 'LANDSLIDE' | 'FOREST_FIRE' | 'FIRE' | 'HEATWAVE';
+const DISASTER_FILTERS: Array<DisasterType | null> = [null, 'EARTHQUAKE', 'FLOOD', 'LANDSLIDE', 'FOREST_FIRE', 'FIRE', 'HEATWAVE'];
+const DISASTER_LABELS: Record<string, string> = {
+  null: 'All Types', EARTHQUAKE: 'Earthquake', FLOOD: 'Flood',
+  LANDSLIDE: 'Landslide', FOREST_FIRE: 'Forest Fire', FIRE: 'Fire', HEATWAVE: 'Heatwave',
+};
+
+function getDisasterType(text: string): DisasterType | null {
+  const t = text.toLowerCase();
+  if (t.includes('earthquake') || t.includes('tremor') || t.includes('quake')) return 'EARTHQUAKE';
+  if (t.includes('flood') || t.includes('flooding')) return 'FLOOD';
+  if (t.includes('landslide') || t.includes('land slide')) return 'LANDSLIDE';
+  if (t.includes('forest fire') || t.includes('wildfire')) return 'FOREST_FIRE';
+  if (t.includes('fire')) return 'FIRE';
+  if (t.includes('heat') || t.includes('heatwave')) return 'HEATWAVE';
+  return null;
+}
+
 function detectDisasterType(description: string): string {
-  const text = description.toLowerCase();
-  if (text.includes('earthquake') || text.includes('tremor') || text.includes('quake')) return 'Earthquake Report';
-  if (text.includes('flood') || text.includes('flooding')) return 'Flood Report';
-  if (text.includes('landslide') || text.includes('land slide')) return 'Landslide Report';
-  if (text.includes('fire') || text.includes('wildfire')) return 'Fire Report';
-  if (text.includes('heat') || text.includes('heatwave')) return 'Heatwave Report';
+  const type = getDisasterType(description);
+  if (type === 'EARTHQUAKE') return 'Earthquake Report';
+  if (type === 'FLOOD') return 'Flood Report';
+  if (type === 'LANDSLIDE') return 'Landslide Report';
+  if (type === 'FOREST_FIRE') return 'Forest Fire Report';
+  if (type === 'FIRE') return 'Fire Report';
+  if (type === 'HEATWAVE') return 'Heatwave Report';
   return 'Citizen Report';
 }
 
@@ -44,14 +63,21 @@ function timeAgo(iso: string): string {
   return `${Math.floor(h / 24)}d ago`;
 }
 
+function fullDate(iso: string): string {
+  return new Date(iso).toLocaleString('en-US', {
+    month: 'short', day: 'numeric', year: 'numeric',
+    hour: '2-digit', minute: '2-digit',
+  });
+}
+
 function makeStyles(t: AppTheme) {
   return StyleSheet.create({
-    container:  { flex: 1, backgroundColor: t.bg },
-    header:     { backgroundColor: t.bg },
-    heading:    { fontSize: 24, fontWeight: '700', color: t.text, padding: 16, paddingBottom: 10 },
+    container:   { flex: 1, backgroundColor: t.bg },
+    header:      { backgroundColor: t.bg },
+    heading:     { fontSize: 24, fontWeight: '700', color: t.text, padding: 16, paddingBottom: 10 },
     pillsScroll: { height: 44 },
-    filters:    { paddingHorizontal: 16, alignItems: 'center', gap: 8 },
-    list:       { flex: 1 },
+    filters:     { paddingHorizontal: 16, alignItems: 'center', gap: 8 },
+    list:        { flex: 1 },
     listContent: { paddingHorizontal: 16, paddingTop: 4, paddingBottom: 24 },
     pill: {
       paddingHorizontal: 18, paddingVertical: 7, borderRadius: 20,
@@ -60,9 +86,7 @@ function makeStyles(t: AppTheme) {
     pillText:       { fontSize: 13, fontWeight: '600', color: t.sectionTitle },
     pillTextActive: { color: t.activePillText },
     sortRow: {
-      paddingHorizontal: 16,
-      paddingBottom: 10,
-      alignItems: 'flex-end',
+      paddingHorizontal: 16, paddingBottom: 10, alignItems: 'flex-end',
     },
     sortBtn: {
       flexDirection: 'row', alignItems: 'center', gap: 5,
@@ -74,8 +98,7 @@ function makeStyles(t: AppTheme) {
     card: {
       flexDirection: 'row', backgroundColor: t.card, borderRadius: 14,
       marginBottom: 10, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 6,
-      shadowOffset: { width: 0, height: 2 }, elevation: 3,
-      overflow: 'hidden',
+      shadowOffset: { width: 0, height: 2 }, elevation: 3, overflow: 'hidden',
     },
     accentBar:      { width: 4 },
     cardInner:      { flex: 1, padding: 16 },
@@ -95,6 +118,11 @@ function makeStyles(t: AppTheme) {
     coords:        { fontSize: 11, color: t.muted, marginLeft: 17 },
     mapBtn:        { padding: 4, marginTop: 1 },
 
+    expandDivider: { height: StyleSheet.hairlineWidth, backgroundColor: t.border, marginTop: 12, marginBottom: 10 },
+    expandRow:     { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 },
+    expandLabel:   { fontSize: 11, fontWeight: '700', color: t.muted, letterSpacing: 0.4, textTransform: 'uppercase' },
+    expandValue:   { fontSize: 12, color: t.subtext, flex: 1, textAlign: 'right', paddingLeft: 12 },
+
     emptyState:    { alignItems: 'center', paddingTop: 64, paddingBottom: 24 },
     emptyTitle:    { fontSize: 15, fontWeight: '700', color: t.sectionTitle, marginTop: 14 },
     emptySubtitle: { fontSize: 13, color: t.muted, marginTop: 4 },
@@ -109,8 +137,14 @@ export default function FeedScreen() {
   const s = useMemo(() => makeStyles(t), [t]);
 
   const [severityFilter, setSeverityFilter] = useState<Severity | null>(null);
+  const [disasterFilter, setDisasterFilter] = useState<DisasterType | null>(null);
   const [reports, setReports] = useState<ReportResponse[]>([]);
   const [sortMode, setSortMode] = useState<'newest' | 'oldest'>('newest');
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  const toggleExpand = useCallback((id: string) => {
+    setExpandedId(prev => (prev === id ? null : id));
+  }, []);
 
   const fetchReports = useCallback(() => {
     fetch(`${API_BASE_URL}/api/v1/reports`)
@@ -127,20 +161,17 @@ export default function FeedScreen() {
   const feedItems = useMemo<FeedItem[]>(() => {
     const incidentItems = incidents
       .filter(i => !severityFilter || i.severity === severityFilter)
+      .filter(i => !disasterFilter || getDisasterType(`${i.title} ${i.description}`) === disasterFilter)
       .map(i => ({ kind: 'incident' as const, data: i, date: new Date(i.reported_at) }));
 
-    const reportItems = reports.map(r => ({
-      kind: 'report' as const,
-      data: r,
-      date: new Date(r.submitted_at),
-    }));
+    const reportItems = reports
+      .filter(r => !disasterFilter || getDisasterType(r.description) === disasterFilter)
+      .map(r => ({ kind: 'report' as const, data: r, date: new Date(r.submitted_at) }));
 
     const items = [...incidentItems, ...reportItems];
-    if (sortMode === 'oldest') {
-      return items.sort((a, b) => a.date.getTime() - b.date.getTime());
-    }
+    if (sortMode === 'oldest') return items.sort((a, b) => a.date.getTime() - b.date.getTime());
     return items.sort((a, b) => b.date.getTime() - a.date.getTime());
-  }, [incidents, reports, severityFilter, sortMode]);
+  }, [incidents, reports, severityFilter, disasterFilter, sortMode]);
 
   const viewOnMap = (item: Incident) => {
     navigation.navigate('LiveMap', {
@@ -156,10 +187,8 @@ export default function FeedScreen() {
         <Text style={s.heading}>Feed</Text>
 
         <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={s.filters}
-          style={s.pillsScroll}
+          horizontal showsHorizontalScrollIndicator={false}
+          contentContainerStyle={s.filters} style={s.pillsScroll}
         >
           {SEVERITY_FILTERS.map(f => {
             const active = severityFilter === f;
@@ -178,6 +207,27 @@ export default function FeedScreen() {
           })}
         </ScrollView>
 
+        <ScrollView
+          horizontal showsHorizontalScrollIndicator={false}
+          contentContainerStyle={s.filters} style={s.pillsScroll}
+        >
+          {DISASTER_FILTERS.map(f => {
+            const active = disasterFilter === f;
+            return (
+              <TouchableOpacity
+                key={String(f)}
+                style={[s.pill, active && { backgroundColor: t.activePillBg, borderColor: t.activePillBg }]}
+                onPress={() => setDisasterFilter(f)}
+                activeOpacity={0.7}
+              >
+                <Text style={[s.pillText, active && s.pillTextActive]}>
+                  {DISASTER_LABELS[String(f)]}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+
         <View style={s.sortRow}>
           <TouchableOpacity
             style={s.sortBtn}
@@ -186,8 +236,7 @@ export default function FeedScreen() {
           >
             <Ionicons
               name={sortMode === 'newest' ? 'arrow-down-outline' : 'arrow-up-outline'}
-              size={13}
-              color={t.sectionTitle}
+              size={13} color={t.sectionTitle}
             />
             <Text style={s.sortBtnText}>
               {sortMode === 'newest' ? 'Newest first' : 'Oldest first'}
@@ -208,8 +257,19 @@ export default function FeedScreen() {
           ListEmptyComponent={<EmptyFeed s={s} />}
           renderItem={({ item }) =>
             item.kind === 'incident'
-              ? <IncidentCard item={item.data} onViewMap={viewOnMap} s={s} />
-              : <ReportCard item={item.data} s={s} />
+              ? <IncidentCard
+                  item={item.data}
+                  onViewMap={viewOnMap}
+                  s={s}
+                  isExpanded={expandedId === item.data.id}
+                  onToggle={() => toggleExpand(item.data.id)}
+                />
+              : <ReportCard
+                  item={item.data}
+                  s={s}
+                  isExpanded={expandedId === item.data.id}
+                  onToggle={() => toggleExpand(item.data.id)}
+                />
           }
         />
       )}
@@ -229,9 +289,15 @@ function EmptyFeed({ s }: { s: S }) {
   );
 }
 
-function IncidentCard({ item, onViewMap, s }: { item: Incident; onViewMap: (i: Incident) => void; s: S }) {
+function IncidentCard({ item, onViewMap, s, isExpanded, onToggle }: {
+  item: Incident;
+  onViewMap: (i: Incident) => void;
+  s: S;
+  isExpanded: boolean;
+  onToggle: () => void;
+}) {
   return (
-    <View style={s.card}>
+    <TouchableOpacity style={s.card} onPress={onToggle} activeOpacity={0.85}>
       <View style={[s.accentBar, { backgroundColor: SeverityColors[item.severity] }]} />
       <View style={s.cardInner}>
         <View style={s.cardHeader}>
@@ -244,10 +310,13 @@ function IncidentCard({ item, onViewMap, s }: { item: Incident; onViewMap: (i: I
             </Text>
           </View>
           <Text style={s.timeAgo}>{timeAgo(item.reported_at)}</Text>
+          <Ionicons name={isExpanded ? 'chevron-up' : 'chevron-down'} size={14} color="#9CA3AF" />
         </View>
 
         <Text style={s.title}>{item.title}</Text>
-        <Text style={s.description} numberOfLines={2}>{item.description}</Text>
+        <Text style={s.description} numberOfLines={isExpanded ? undefined : 2}>
+          {item.description}
+        </Text>
 
         <View style={s.cardFooter}>
           <View style={s.locationBlock}>
@@ -266,14 +335,45 @@ function IncidentCard({ item, onViewMap, s }: { item: Incident; onViewMap: (i: I
             <Ionicons name="map-outline" size={20} color="#2563EB" />
           </TouchableOpacity>
         </View>
+
+        {isExpanded && (
+          <>
+            <View style={s.expandDivider} />
+            {!!item.zone.name && (
+              <View style={s.expandRow}>
+                <Text style={s.expandLabel}>Disaster Type</Text>
+                <Text style={s.expandValue}>{item.zone.name}</Text>
+              </View>
+            )}
+            <View style={s.expandRow}>
+              <Text style={s.expandLabel}>Reported</Text>
+              <Text style={s.expandValue}>{fullDate(item.reported_at)}</Text>
+            </View>
+            <View style={s.expandRow}>
+              <Text style={s.expandLabel}>Last updated</Text>
+              <Text style={s.expandValue}>{fullDate(item.updated_at)}</Text>
+            </View>
+            <View style={s.expandRow}>
+              <Text style={s.expandLabel}>Coordinates</Text>
+              <Text style={s.expandValue}>
+                {item.latitude.toFixed(6)}°N, {item.longitude.toFixed(6)}°E
+              </Text>
+            </View>
+          </>
+        )}
       </View>
-    </View>
+    </TouchableOpacity>
   );
 }
 
-function ReportCard({ item, s }: { item: ReportResponse; s: S }) {
+function ReportCard({ item, s, isExpanded, onToggle }: {
+  item: ReportResponse;
+  s: S;
+  isExpanded: boolean;
+  onToggle: () => void;
+}) {
   return (
-    <View style={s.card}>
+    <TouchableOpacity style={s.card} onPress={onToggle} activeOpacity={0.85}>
       <View style={[s.accentBar, { backgroundColor: '#7C3AED' }]} />
       <View style={s.cardInner}>
         <View style={s.cardHeader}>
@@ -286,10 +386,13 @@ function ReportCard({ item, s }: { item: ReportResponse; s: S }) {
             </Text>
           </View>
           <Text style={s.timeAgo}>{timeAgo(item.submitted_at)}</Text>
+          <Ionicons name={isExpanded ? 'chevron-up' : 'chevron-down'} size={14} color="#9CA3AF" />
         </View>
 
         <Text style={s.title}>{detectDisasterType(item.description)}</Text>
-        <Text style={s.description} numberOfLines={2}>{item.description}</Text>
+        <Text style={s.description} numberOfLines={isExpanded ? undefined : 2}>
+          {item.description}
+        </Text>
 
         <View style={s.locationRow}>
           <Ionicons name="location-sharp" size={13} color="#7C3AED" />
@@ -297,7 +400,29 @@ function ReportCard({ item, s }: { item: ReportResponse; s: S }) {
             {item.latitude.toFixed(4)}°N, {item.longitude.toFixed(4)}°E
           </Text>
         </View>
+
+        {isExpanded && (
+          <>
+            <View style={s.expandDivider} />
+            <View style={s.expandRow}>
+              <Text style={s.expandLabel}>Submitted</Text>
+              <Text style={s.expandValue}>{fullDate(item.submitted_at)}</Text>
+            </View>
+            <View style={s.expandRow}>
+              <Text style={s.expandLabel}>Coordinates</Text>
+              <Text style={s.expandValue}>
+                {item.latitude.toFixed(6)}°N, {item.longitude.toFixed(6)}°E
+              </Text>
+            </View>
+            {!!item.image_url && (
+              <View style={s.expandRow}>
+                <Text style={s.expandLabel}>Photo</Text>
+                <Text style={s.expandValue}>Attached</Text>
+              </View>
+            )}
+          </>
+        )}
       </View>
-    </View>
+    </TouchableOpacity>
   );
 }
