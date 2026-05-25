@@ -30,7 +30,11 @@ export function IncidentsProvider({ children }: { children: React.ReactNode }) {
       .finally(() => { setLoading(false); setRefreshing(false); });
   }, []);
 
-  useEffect(() => { fetchIncidents(); }, [fetchIncidents]);
+  useEffect(() => {
+    fetchIncidents();
+    const interval = setInterval(() => fetchIncidents(), 60_000);
+    return () => clearInterval(interval);
+  }, [fetchIncidents]);
 
   const refresh = useCallback(() => fetchIncidents(true), [fetchIncidents]);
 

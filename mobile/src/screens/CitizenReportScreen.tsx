@@ -14,12 +14,14 @@ import { LightTheme, DarkTheme, AppTheme } from '../constants/colors';
 
 
 const DISASTER_TYPES = [
-  { key: 'Flood',      label: 'Flood',      icon: 'water',                color: '#0EA5E9' },
-  { key: 'Earthquake', label: 'Earthquake', icon: 'warning',              color: '#F97316' },
-  { key: 'Landslide',  label: 'Landslide',  icon: 'earth',                color: '#92400E' },
-  { key: 'Wildfire',   label: 'Wildfire',   icon: 'flame',                color: '#DC2626' },
-  { key: 'Fire',       label: 'Fire',       icon: 'flame-outline',        color: '#EA580C' },
-  { key: 'Other',      label: 'Other',      icon: 'help-circle-outline',  color: '#6B7280' },
+  { key: 'Flood',          label: 'Flood',        icon: 'water',                color: '#0EA5E9' },
+  { key: 'Earthquake',     label: 'Earthquake',   icon: 'warning',              color: '#F97316' },
+  { key: 'Landslide',      label: 'Landslide',    icon: 'earth',                color: '#92400E' },
+  { key: 'Heavy Rainfall', label: 'Heavy Rain',   icon: 'rainy',                color: '#0369A1' },
+  { key: 'Road Closed',    label: 'Road Closed',  icon: 'close-circle-outline', color: '#6B7280' },
+  { key: 'Wildfire',       label: 'Wildfire',     icon: 'flame',                color: '#DC2626' },
+  { key: 'Fire',           label: 'Fire',         icon: 'flame-outline',        color: '#EA580C' },
+  { key: 'Other',          label: 'Other',        icon: 'help-circle-outline',  color: '#9CA3AF' },
 ] as const;
 
 const SEVERITY_LEVELS = [
@@ -172,6 +174,7 @@ export default function CitizenReportScreen() {
   const s = useMemo(() => makeStyles(t), [t]);
 
   const [disasterType, setDisasterType] = useState<DisasterType>(null);
+  const [otherTypeText, setOtherTypeText] = useState('');
   const [severity, setSeverity]         = useState<SeverityKey>(null);
   const [description, setDescription]   = useState('');
   const [location, setLocation]         = useState<{ latitude: number; longitude: number } | null>(null);
@@ -182,8 +185,10 @@ export default function CitizenReportScreen() {
   const selectedSevIdx = SEVERITY_LEVELS.findIndex(l => l.key === severity);
 
 
-  const toggleType = (key: DisasterType) =>
+  const toggleType = (key: DisasterType) => {
     setDisasterType(prev => (prev === key ? null : key));
+    if (key !== 'Other') setOtherTypeText('');
+  };
 
   const toggleSeverity = (key: SeverityKey) =>
     setSeverity(prev => (prev === key ? null : key));
@@ -222,7 +227,10 @@ export default function CitizenReportScreen() {
     }
 
     // Embed type + severity into description — same API payload, no backend changes
-    const parts: string[] = [`Type: ${disasterType}`];
+    const resolvedType = disasterType === 'Other' && otherTypeText.trim()
+      ? otherTypeText.trim()
+      : disasterType;
+    const parts: string[] = [`Type: ${resolvedType}`];
     if (severity) parts.push(`Severity: ${severity}`);
     if (description.trim()) parts.push(description.trim());
     const finalDescription = parts.join('\n');
@@ -237,6 +245,7 @@ export default function CitizenReportScreen() {
       if (res.ok) {
         Alert.alert('Submitted', 'Your report has been received. Thank you.');
         setDisasterType(null);
+        setOtherTypeText('');
         setSeverity(null);
         setDescription('');
         setLocation(null);
@@ -294,6 +303,16 @@ export default function CitizenReportScreen() {
               );
             })}
           </View>
+          {disasterType === 'Other' && (
+            <TextInput
+              style={[s.textarea, { marginTop: 10, minHeight: 44 }]}
+              placeholder="Describe the disaster type…"
+              placeholderTextColor={t.muted}
+              value={otherTypeText}
+              onChangeText={setOtherTypeText}
+              autoFocus
+            />
+          )}
         </View>
 
         {/* ── Severity stepper ── */}
