@@ -1,8 +1,26 @@
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.api.v1.router import v1_router
+from apscheduler.schedulers.background import BackgroundScheduler
 
-app = FastAPI(title='Nepal Disaster API', version='0.1.0')
+from app.api.v1.router import v1_router
+from app.services.sync import sync_bipad_to_supabase
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    sync_bipad_to_supabase()
+
+    scheduler = BackgroundScheduler()
+    scheduler.add_job(sync_bipad_to_supabase, 'interval', minutes=5)
+    scheduler.start()
+
+    yield
+
+    scheduler.shutdown(wait=False)
+
+
+app = FastAPI(title='Nepal Disaster API', version='0.1.0', lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,

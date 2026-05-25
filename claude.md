@@ -64,23 +64,22 @@ Reference them in React Native via a library like `react-native-dotenv`.
 | Service    | Key name(s)                          | Setup required | Notes                          |
 |------------|--------------------------------------|----------------|--------------------------------|
 | Mapbox     | MAPBOX_ACCESS_TOKEN                  | Yes            | mapbox.com → Access Tokens     |
-| Supabase   | SUPABASE_URL, SUPABASE_ANON_KEY,     | Yes            | Not used in initial draft —    |
-|            | SUPABASE_SERVICE_KEY                 |                | keys saved, no tables yet      |
+| Supabase   | SUPABASE_URL, SUPABASE_ANON_KEY,     | Yes            | Active — `reports` table live; |
+|            | SUPABASE_SERVICE_KEY                 |                | `incidents` table pending      |
 | Firebase   | FCM_SERVER_KEY (backend)             | Yes            | google-services.json goes in   |
 |            | google-services.json (RN app)        |                | the React Native project root  |
-| USGS       | USGS_BASE_URL                        | No             | Open API, no key required      |
-| GDACS      | GDACS_BASE_URL                       | No             | Open API, no key required      |
 
-### Initial draft data rules
-- USGS and GDACS are the only active data sources for the initial draft
-- Supabase is configured but dormant — no queries, no table writes
-- All seeded data flows through seed_scenario.py → /mock-data/incidents.json
-- When Supabase is activated, the same Incident Pydantic model is used —
-  no model changes should be needed
+### Data source rules
+- **BIPAD Portal** (`https://bipadportal.gov.np/api/v1/alert/`) is the sole active data source for Incidents
+- USGS and GDACS are not used — do not add them without explicit instruction
+- Supabase is the database: `reports` table is live; `incidents` table to be added
+- The sync pipeline (BIPAD → Supabase `incidents`) runs as a background job every 5 minutes
+- When Supabase is activated for incidents, the same Incident Pydantic model is used — no model changes needed
 
 ## Architecture Notes
 
-- We will use GDACS/USGS for initila data
 - All API routes follow: `/api/v1/{resource}` (e.g. `/api/v1/incidents`)
-- Data from the UK professor will be ingested as flat files initially, these should come in CSV files that we will clean up eventually
+- Incidents flow: BIPAD API → background sync job → Supabase `incidents` table → `GET /api/v1/incidents`
+- Reports flow: Mobile app → `POST /api/v1/reports` → Supabase `reports` table
+- Data from the UK professor will be ingested as flat files initially (CSV), cleaned before import
 
