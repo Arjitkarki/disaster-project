@@ -3,7 +3,6 @@ from datetime import datetime
 from typing import List
 
 from ..models.incident import Incident, Severity, Lifecycle, Zone
-from . import staticdata
 
 BIPAD_ALERT_URL = "https://bipadportal.gov.np/api/v1/alert/"
 
@@ -116,5 +115,5 @@ def fetch_bipad_alerts() -> List[Incident]:
         return incidents
 
     except Exception as e:
-        print(f"✗ Bipad API failed: {e} — using static data")
-        return staticdata.fetch_incidents()
+        print(f"✗ Bipad API failed: {e}")
+        return []

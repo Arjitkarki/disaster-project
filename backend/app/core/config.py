@@ -9,5 +9,3 @@ SUPABASE_URL         = os.getenv('Supabase_Url', '')
 SUPABASE_ANON_KEY    = os.getenv('Supabase_Anon_Key', '')
 SUPABASE_SERVICE_KEY = os.getenv('Supabase_Secret_Key', '')
 
-USGS_BASE_URL  = os.getenv('USGS_BASE_URL', 'https://earthquake.usgs.gov/fdsnws/event/1')
-GDACS_BASE_URL = os.getenv('GDACS_BASE_URL', 'https://www.gdacs.org/gdacsapi/api')
