@@ -9,6 +9,7 @@
     "web": "expo start --web"
   },
   "dependencies": {
+    "@expo-google-fonts/noto-sans-devanagari": "^0.4.1",
     "@expo/vector-icons": "^15.0.3",
     "@react-navigation/bottom-tabs": "^7.15.10",
     "@react-navigation/native": "^7.2.2",
@@ -17,7 +18,7 @@
     "expo-dev-client": "~6.0.21",
     "expo-image-picker": "~17.0.11",
     "expo-location": "~19.0.8",
-    "expo-notifications": "~0.29.0",
+    "expo-notifications": "~0.32.17",
     "expo-status-bar": "~3.0.9",
     "react": "19.1.0",
     "react-dom": "19.1.0",

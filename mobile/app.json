@@ -32,6 +32,15 @@
       [
         "@rnmapbox/maps",
         {}
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#DC2626",
+          "sounds": [],
+          "androidMode": "default"
+        }
       ]
     ]
   }

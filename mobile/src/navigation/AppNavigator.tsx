@@ -10,6 +10,7 @@ import CitizenReportScreen from '../screens/CitizenReportScreen';
 import SupportScreen from '../screens/SupportScreen';
 import { useTheme } from '../context/ThemeContext';
 import { DarkTheme, LightTheme } from '../constants/colors';
+import { useLanguage } from '../context/LanguageContext';
 
 export type RootTabParamList = {
   Dashboard: undefined;
@@ -31,7 +32,8 @@ const TAB_ICONS: Record<string, [string, string]> = {
 
 export default function AppNavigator() {
   const { isDark } = useTheme();
-  const t = isDark ? DarkTheme : LightTheme;
+  const { t } = useLanguage();
+  const theme = isDark ? DarkTheme : LightTheme;
 
   return (
     <NavigationContainer>
@@ -48,27 +50,22 @@ export default function AppNavigator() {
             );
           },
           tabBarActiveTintColor: '#DC2626',
-          tabBarInactiveTintColor: t.muted,
+          tabBarInactiveTintColor: theme.muted,
           tabBarStyle: {
-            borderTopColor: t.border,
-            backgroundColor: t.bg,
+            borderTopColor: theme.border,
+            backgroundColor: theme.bg,
           },
+          tabBarLabelStyle: lang === 'ne'
+            ? { fontFamily: 'NotoSansDevanagari_400Regular', fontSize: 10 }
+            : undefined,
           headerShown: false,
         })}
       >
-        <Tab.Screen name="Dashboard" component={DashboardScreen} />
-        <Tab.Screen name="Feed" component={FeedScreen} />
-        <Tab.Screen
-          name="LiveMap"
-          component={LiveMapScreen}
-          options={{ title: 'Live Map' }}
-        />
-        <Tab.Screen
-          name="CitizenReport"
-          component={CitizenReportScreen}
-          options={{ title: 'Report' }}
-        />
-        <Tab.Screen name="Support" component={SupportScreen} />
+        <Tab.Screen name="Dashboard" component={DashboardScreen} options={{ title: t.nav.dashboard }} />
+        <Tab.Screen name="Feed" component={FeedScreen} options={{ title: t.nav.feed }} />
+        <Tab.Screen name="LiveMap" component={LiveMapScreen} options={{ title: t.nav.liveMap }} />
+        <Tab.Screen name="CitizenReport" component={CitizenReportScreen} options={{ title: t.nav.report }} />
+        <Tab.Screen name="Support" component={SupportScreen} options={{ title: t.nav.support }} />
       </Tab.Navigator>
     </NavigationContainer>
   );

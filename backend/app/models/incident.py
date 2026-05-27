@@ -28,6 +28,7 @@ class Zone(BaseModel):
 class Incident(BaseModel):
     id:          str
     title:       str
+    title_ne:    Optional[str] = None
     description: str
     severity:    Severity
     lifecycle:   Lifecycle
