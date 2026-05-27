@@ -49,6 +49,10 @@ def map_severity(record: dict) -> Severity:
         rank = max(rank, 1)
     elif ref_type == 'fire':
         rank = max(rank, 1)
+    elif ref_type in ('road', 'road_blockage', 'road blockage'):
+        rank = max(rank, 1)
+    elif ref_type in ('rainfall', 'heavy rainfall', 'heavy_rainfall'):
+        rank = max(rank, 1)
 
     return _RANK_SEVERITY[rank]
 
@@ -82,7 +86,7 @@ def fetch_bipad_alerts() -> List[Incident]:
             demography = rec.get('affectedDemography') or {}
             household_count = demography.get('householdCount') or 0
 
-            raw_desc = (rec.get('description') or '').replace('\n', ', ')
+            raw_desc = (rec.get('description') or '').strip()
             title_ne = rec.get('titleNe') or ''
             desc = raw_desc
             if title_ne:
@@ -95,6 +99,7 @@ def fetch_bipad_alerts() -> List[Incident]:
             incidents.append(Incident(
                 id=f"bipad-{rec['id']}",
                 title=rec.get('title') or '',
+                title_ne=rec.get('titleNe') or None,
                 description=desc,
                 severity=map_severity(rec),
                 lifecycle=Lifecycle.VERIFIED if rec.get('verified') else Lifecycle.REPORTED,

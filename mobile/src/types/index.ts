@@ -11,6 +11,7 @@ export interface Zone {
 export interface Incident {
   id: string;
   title: string;
+  title_ne?: string;
   description: string;
   severity: Severity;
   lifecycle: Lifecycle;

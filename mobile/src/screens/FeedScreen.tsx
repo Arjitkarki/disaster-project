@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  View, Text, FlatList, StyleSheet, ActivityIndicator,
+  View, FlatList, StyleSheet, ActivityIndicator,
   RefreshControl, TouchableOpacity, ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -12,6 +12,9 @@ import { SeverityColors, LifecycleColors, LightTheme, DarkTheme, AppTheme } from
 import { RootTabParamList } from '../navigation/AppNavigator';
 import { useIncidents } from '../context/IncidentsContext';
 import { useTheme } from '../context/ThemeContext';
+import { useLanguage } from '../context/LanguageContext';
+import { Translations } from '../constants/translations';
+import { AppText } from '../components/AppText';
 import { API_BASE_URL } from '../constants/api';
 
 type Nav = BottomTabNavigationProp<RootTabParamList>;
@@ -22,42 +25,35 @@ type FeedItem =
 
 type SeverityOrSource = Severity | 'CITIZEN' | null;
 const SEVERITY_FILTERS: Array<SeverityOrSource> = [null, 'CRITICAL', 'HIGH', 'MODERATE', 'LOW', 'CITIZEN'];
-const FILTER_LABELS: Record<string, string> = {
-  null: 'All', CRITICAL: 'Critical', HIGH: 'High', MODERATE: 'Moderate', LOW: 'Low', CITIZEN: 'Citizen',
-};
 
 type DisasterType = 'EARTHQUAKE' | 'FLOOD' | 'LANDSLIDE' | 'FOREST_FIRE' | 'FIRE' | 'HEATWAVE' | 'ROAD_CLOSED' | 'HEAVY_RAINFALL';
 const DISASTER_FILTERS: Array<DisasterType | null> = [null, 'EARTHQUAKE', 'FLOOD', 'LANDSLIDE', 'FOREST_FIRE', 'FIRE', 'HEATWAVE', 'ROAD_CLOSED', 'HEAVY_RAINFALL'];
-const DISASTER_LABELS: Record<string, string> = {
-  null: 'All Types', EARTHQUAKE: 'Earthquake', FLOOD: 'Flood',
-  LANDSLIDE: 'Landslide', FOREST_FIRE: 'Forest Fire', FIRE: 'Fire', HEATWAVE: 'Heatwave',
-  ROAD_CLOSED: 'Road Closed', HEAVY_RAINFALL: 'Heavy Rainfall',
-};
 
 function getDisasterType(text: string): DisasterType | null {
-  const t = text.toLowerCase();
-  if (t.includes('earthquake') || t.includes('tremor') || t.includes('quake')) return 'EARTHQUAKE';
-  if (t.includes('flood') || t.includes('flooding')) return 'FLOOD';
-  if (t.includes('landslide') || t.includes('land slide')) return 'LANDSLIDE';
-  if (t.includes('forest fire') || t.includes('wildfire')) return 'FOREST_FIRE';
-  if (t.includes('road') && (t.includes('closed') || t.includes('block'))) return 'ROAD_CLOSED';
-  if (t.includes('heavy rain') || t.includes('rainfall')) return 'HEAVY_RAINFALL';
-  if (t.includes('fire')) return 'FIRE';
-  if (t.includes('heat') || t.includes('heatwave')) return 'HEATWAVE';
+  const lower = text.toLowerCase();
+  if (lower.includes('earthquake') || lower.includes('tremor') || lower.includes('quake')) return 'EARTHQUAKE';
+  if (lower.includes('flood') || lower.includes('flooding')) return 'FLOOD';
+  if (lower.includes('landslide') || lower.includes('land slide')) return 'LANDSLIDE';
+  if (lower.includes('forest fire') || lower.includes('wildfire')) return 'FOREST_FIRE';
+  if (lower.includes('road') && (lower.includes('closed') || lower.includes('block'))) return 'ROAD_CLOSED';
+  if (lower.includes('heavy rain') || lower.includes('rainfall')) return 'HEAVY_RAINFALL';
+  if (lower.includes('fire')) return 'FIRE';
+  if (lower.includes('heat') || lower.includes('heatwave')) return 'HEATWAVE';
   return null;
 }
 
-function detectDisasterType(description: string): string {
+function getReportTitle(description: string, t: Translations): string {
   const type = getDisasterType(description);
-  if (type === 'EARTHQUAKE') return 'Earthquake Report';
-  if (type === 'FLOOD') return 'Flood Report';
-  if (type === 'LANDSLIDE') return 'Landslide Report';
-  if (type === 'FOREST_FIRE') return 'Forest Fire Report';
-  if (type === 'ROAD_CLOSED') return 'Road Closure Report';
-  if (type === 'HEAVY_RAINFALL') return 'Heavy Rainfall Report';
-  if (type === 'FIRE') return 'Fire Report';
-  if (type === 'HEATWAVE') return 'Heatwave Report';
-  return 'Citizen Report';
+  const suffix = t.feed.reportSuffix;
+  if (type === 'EARTHQUAKE') return `${t.common.earthquake} ${suffix}`;
+  if (type === 'FLOOD')      return `${t.common.flood} ${suffix}`;
+  if (type === 'LANDSLIDE')  return `${t.common.landslide} ${suffix}`;
+  if (type === 'FOREST_FIRE')return `${t.common.forestFire} ${suffix}`;
+  if (type === 'ROAD_CLOSED')return `${t.common.roadClosed} ${suffix}`;
+  if (type === 'HEAVY_RAINFALL') return `${t.common.heavyRain} ${suffix}`;
+  if (type === 'FIRE')       return `${t.common.fire} ${suffix}`;
+  if (type === 'HEATWAVE')   return `${t.common.heatwave} ${suffix}`;
+  return t.feed.citizenReport;
 }
 
 function timeAgo(iso: string): string {
@@ -91,9 +87,7 @@ function makeStyles(t: AppTheme) {
     },
     pillText:       { fontSize: 13, fontWeight: '600', color: t.sectionTitle },
     pillTextActive: { color: t.activePillText },
-    sortRow: {
-      paddingHorizontal: 16, paddingBottom: 10, alignItems: 'flex-end',
-    },
+    sortRow: { paddingHorizontal: 16, paddingBottom: 10, alignItems: 'flex-end' },
     sortBtn: {
       flexDirection: 'row', alignItems: 'center', gap: 5,
       paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20,
@@ -139,8 +133,9 @@ export default function FeedScreen() {
   const navigation = useNavigation<Nav>();
   const { incidents, loading, refreshing, refresh } = useIncidents();
   const { isDark } = useTheme();
-  const t = isDark ? DarkTheme : LightTheme;
-  const s = useMemo(() => makeStyles(t), [t]);
+  const { lang, t } = useLanguage();
+  const theme = isDark ? DarkTheme : LightTheme;
+  const s = useMemo(() => makeStyles(theme), [theme]);
 
   const [severityFilter, setSeverityFilter] = useState<SeverityOrSource>(null);
   const [disasterFilter, setDisasterFilter] = useState<DisasterType | null>(null);
@@ -185,81 +180,59 @@ export default function FeedScreen() {
   }, [incidents, reports, severityFilter, disasterFilter, sortMode]);
 
   const viewOnMap = (item: Incident) => {
-    navigation.navigate('LiveMap', {
-      focusLat: item.latitude,
-      focusLng: item.longitude,
-      focusId: item.id,
-    });
+    navigation.navigate('LiveMap', { focusLat: item.latitude, focusLng: item.longitude, focusId: item.id });
   };
-
   const viewReportOnMap = (item: ReportResponse) => {
-    navigation.navigate('LiveMap', {
-      focusLat: item.latitude,
-      focusLng: item.longitude,
-      focusId: '',
-    });
+    navigation.navigate('LiveMap', { focusLat: item.latitude, focusLng: item.longitude, focusId: '' });
   };
 
   return (
     <SafeAreaView style={s.container}>
       <View style={s.header}>
-        <Text style={s.heading}>Feed</Text>
+        <AppText style={s.heading}>{t.feed.heading}</AppText>
 
-        <ScrollView
-          horizontal showsHorizontalScrollIndicator={false}
-          contentContainerStyle={s.filters} style={s.pillsScroll}
-        >
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.filters} style={s.pillsScroll}>
           {SEVERITY_FILTERS.map(f => {
             const active = severityFilter === f;
             return (
               <TouchableOpacity
                 key={String(f)}
-                style={[s.pill, active && { backgroundColor: t.activePillBg, borderColor: t.activePillBg }]}
+                style={[s.pill, active && { backgroundColor: theme.activePillBg, borderColor: theme.activePillBg }]}
                 onPress={() => setSeverityFilter(f)}
                 activeOpacity={0.7}
               >
-                <Text style={[s.pillText, active && s.pillTextActive]}>
-                  {FILTER_LABELS[String(f)]}
-                </Text>
+                <AppText style={[s.pillText, active && s.pillTextActive]}>
+                  {f === null ? t.common.all : f === 'CITIZEN' ? t.feed.citizen : f === 'CRITICAL' ? t.common.critical : f === 'HIGH' ? t.common.high : f === 'MODERATE' ? t.common.moderate : t.common.low}
+                </AppText>
               </TouchableOpacity>
             );
           })}
         </ScrollView>
 
-        <ScrollView
-          horizontal showsHorizontalScrollIndicator={false}
-          contentContainerStyle={s.filters} style={s.pillsScroll}
-        >
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.filters} style={s.pillsScroll}>
           {DISASTER_FILTERS.map(f => {
             const active = disasterFilter === f;
             return (
               <TouchableOpacity
                 key={String(f)}
-                style={[s.pill, active && { backgroundColor: t.activePillBg, borderColor: t.activePillBg }]}
+                style={[s.pill, active && { backgroundColor: theme.activePillBg, borderColor: theme.activePillBg }]}
                 onPress={() => setDisasterFilter(f)}
                 activeOpacity={0.7}
               >
-                <Text style={[s.pillText, active && s.pillTextActive]}>
-                  {DISASTER_LABELS[String(f)]}
-                </Text>
+                <AppText style={[s.pillText, active && s.pillTextActive]}>
+                  {f === null ? t.feed.allTypes : f === 'EARTHQUAKE' ? t.common.earthquake : f === 'FLOOD' ? t.common.flood : f === 'LANDSLIDE' ? t.common.landslide : f === 'FOREST_FIRE' ? t.common.forestFire : f === 'FIRE' ? t.common.fire : f === 'HEATWAVE' ? t.common.heatwave : f === 'ROAD_CLOSED' ? t.common.roadClosed : t.common.heavyRain}
+                </AppText>
               </TouchableOpacity>
             );
           })}
         </ScrollView>
 
         <View style={s.sortRow}>
-          <TouchableOpacity
-            style={s.sortBtn}
-            onPress={() => setSortMode(m => m === 'newest' ? 'oldest' : 'newest')}
-            activeOpacity={0.7}
-          >
-            <Ionicons
-              name={sortMode === 'newest' ? 'arrow-down-outline' : 'arrow-up-outline'}
-              size={13} color={t.sectionTitle}
-            />
-            <Text style={s.sortBtnText}>
-              {sortMode === 'newest' ? 'Newest first' : 'Oldest first'}
-            </Text>
+          <TouchableOpacity style={s.sortBtn} onPress={() => setSortMode(m => m === 'newest' ? 'oldest' : 'newest')} activeOpacity={0.7}>
+            <Ionicons name={sortMode === 'newest' ? 'arrow-down-outline' : 'arrow-up-outline'} size={13} color={theme.sectionTitle} />
+            <AppText style={s.sortBtnText}>
+              {sortMode === 'newest' ? t.feed.newestFirst : t.feed.oldestFirst}
+            </AppText>
           </TouchableOpacity>
         </View>
       </View>
@@ -276,20 +249,8 @@ export default function FeedScreen() {
           ListEmptyComponent={<EmptyFeed s={s} />}
           renderItem={({ item }) =>
             item.kind === 'incident'
-              ? <IncidentCard
-                  item={item.data}
-                  onViewMap={viewOnMap}
-                  s={s}
-                  isExpanded={expandedId === item.data.id}
-                  onToggle={() => toggleExpand(item.data.id)}
-                />
-              : <ReportCard
-                  item={item.data}
-                  onViewMap={viewReportOnMap}
-                  s={s}
-                  isExpanded={expandedId === item.data.id}
-                  onToggle={() => toggleExpand(item.data.id)}
-                />
+              ? <IncidentCard item={item.data} onViewMap={viewOnMap} s={s} lang={lang} isExpanded={expandedId === item.data.id} onToggle={() => toggleExpand(item.data.id)} />
+              : <ReportCard item={item.data} onViewMap={viewReportOnMap} s={s} t={t} isExpanded={expandedId === item.data.id} onToggle={() => toggleExpand(item.data.id)} />
           }
         />
       )}
@@ -300,56 +261,52 @@ export default function FeedScreen() {
 type S = ReturnType<typeof makeStyles>;
 
 function EmptyFeed({ s }: { s: S }) {
+  const { t } = useLanguage();
   return (
     <View style={s.emptyState}>
       <Ionicons name="search-outline" size={42} color="#D1D5DB" />
-      <Text style={s.emptyTitle}>No incidents found</Text>
-      <Text style={s.emptySubtitle}>Try a different filter</Text>
+      <AppText style={s.emptyTitle}>{t.feed.noIncidents}</AppText>
+      <AppText style={s.emptySubtitle}>{t.feed.tryFilter}</AppText>
     </View>
   );
 }
 
-function IncidentCard({ item, onViewMap, s, isExpanded, onToggle }: {
-  item: Incident;
-  onViewMap: (i: Incident) => void;
-  s: S;
-  isExpanded: boolean;
-  onToggle: () => void;
+function IncidentCard({ item, onViewMap, s, isExpanded, onToggle, lang }: {
+  item: Incident; onViewMap: (i: Incident) => void; s: S;
+  isExpanded: boolean; onToggle: () => void; lang: string;
 }) {
+  const { t } = useLanguage();
   return (
     <TouchableOpacity style={s.card} onPress={onToggle} activeOpacity={0.85}>
       <View style={[s.accentBar, { backgroundColor: SeverityColors[item.severity] }]} />
       <View style={s.cardInner}>
         <View style={s.cardHeader}>
           <View style={[s.severityBadge, { backgroundColor: SeverityColors[item.severity] }]}>
-            <Text style={s.severityText}>{item.severity}</Text>
+            <AppText style={s.severityText}>{item.severity}</AppText>
           </View>
           <View style={[s.lifecycleBadge, { borderColor: LifecycleColors[item.lifecycle] }]}>
-            <Text style={[s.lifecycleText, { color: LifecycleColors[item.lifecycle] }]}>
+            <AppText style={[s.lifecycleText, { color: LifecycleColors[item.lifecycle] }]}>
               {item.lifecycle}
-            </Text>
+            </AppText>
           </View>
-          <Text style={s.timeAgo}>{timeAgo(item.reported_at)}</Text>
+          <AppText style={s.timeAgo}>{timeAgo(item.reported_at)}</AppText>
           <Ionicons name={isExpanded ? 'chevron-up' : 'chevron-down'} size={14} color="#9CA3AF" />
         </View>
 
-        <Text style={s.title}>{item.title}</Text>
-        <Text style={s.description} numberOfLines={isExpanded ? undefined : 2}>
+        <AppText style={s.title}>{lang === 'ne' && item.title_ne ? item.title_ne : item.title}</AppText>
+        <AppText style={s.description} numberOfLines={isExpanded ? undefined : 2}>
           {item.description}
-        </Text>
+        </AppText>
 
         <View style={s.cardFooter}>
           <View style={s.locationBlock}>
             <View style={s.locationRow}>
               <Ionicons name="location-sharp" size={13} color="#DC2626" />
-              <Text style={s.locationText}>
-                {item.zone.district}
-                {item.zone.municipality ? ` · ${item.zone.municipality}` : ''}
-              </Text>
+              <AppText style={s.locationText}>
+                {item.zone.district}{item.zone.municipality ? ` · ${item.zone.municipality}` : ''}
+              </AppText>
             </View>
-            <Text style={s.coords}>
-              {item.latitude.toFixed(4)}°N, {item.longitude.toFixed(4)}°E
-            </Text>
+            <AppText style={s.coords}>{item.latitude.toFixed(4)}°N, {item.longitude.toFixed(4)}°E</AppText>
           </View>
           <TouchableOpacity style={s.mapBtn} onPress={() => onViewMap(item)} activeOpacity={0.7}>
             <Ionicons name="map-outline" size={20} color="#2563EB" />
@@ -361,23 +318,21 @@ function IncidentCard({ item, onViewMap, s, isExpanded, onToggle }: {
             <View style={s.expandDivider} />
             {!!item.zone.name && (
               <View style={s.expandRow}>
-                <Text style={s.expandLabel}>Disaster Type</Text>
-                <Text style={s.expandValue}>{item.zone.name}</Text>
+                <AppText style={s.expandLabel}>{t.feed.disasterType}</AppText>
+                <AppText style={s.expandValue}>{item.zone.name}</AppText>
               </View>
             )}
             <View style={s.expandRow}>
-              <Text style={s.expandLabel}>Reported</Text>
-              <Text style={s.expandValue}>{fullDate(item.reported_at)}</Text>
+              <AppText style={s.expandLabel}>{t.feed.reported}</AppText>
+              <AppText style={s.expandValue}>{fullDate(item.reported_at)}</AppText>
             </View>
             <View style={s.expandRow}>
-              <Text style={s.expandLabel}>Last updated</Text>
-              <Text style={s.expandValue}>{fullDate(item.updated_at)}</Text>
+              <AppText style={s.expandLabel}>{t.feed.lastUpdated}</AppText>
+              <AppText style={s.expandValue}>{fullDate(item.updated_at)}</AppText>
             </View>
             <View style={s.expandRow}>
-              <Text style={s.expandLabel}>Coordinates</Text>
-              <Text style={s.expandValue}>
-                {item.latitude.toFixed(6)}°N, {item.longitude.toFixed(6)}°E
-              </Text>
+              <AppText style={s.expandLabel}>{t.feed.coordinates}</AppText>
+              <AppText style={s.expandValue}>{item.latitude.toFixed(6)}°N, {item.longitude.toFixed(6)}°E</AppText>
             </View>
           </>
         )}
@@ -386,12 +341,9 @@ function IncidentCard({ item, onViewMap, s, isExpanded, onToggle }: {
   );
 }
 
-function ReportCard({ item, onViewMap, s, isExpanded, onToggle }: {
-  item: ReportResponse;
-  onViewMap: (item: ReportResponse) => void;
-  s: S;
-  isExpanded: boolean;
-  onToggle: () => void;
+function ReportCard({ item, onViewMap, s, t, isExpanded, onToggle }: {
+  item: ReportResponse; onViewMap: (item: ReportResponse) => void;
+  s: S; t: Translations; isExpanded: boolean; onToggle: () => void;
 }) {
   return (
     <TouchableOpacity style={s.card} onPress={onToggle} activeOpacity={0.85}>
@@ -399,29 +351,27 @@ function ReportCard({ item, onViewMap, s, isExpanded, onToggle }: {
       <View style={s.cardInner}>
         <View style={s.cardHeader}>
           <View style={[s.severityBadge, { backgroundColor: '#7C3AED' }]}>
-            <Text style={s.severityText}>CITIZEN</Text>
+            <AppText style={s.severityText}>{t.feed.citizen.toUpperCase()}</AppText>
           </View>
           <View style={[s.lifecycleBadge, { borderColor: LifecycleColors[item.lifecycle] }]}>
-            <Text style={[s.lifecycleText, { color: LifecycleColors[item.lifecycle] }]}>
+            <AppText style={[s.lifecycleText, { color: LifecycleColors[item.lifecycle] }]}>
               {item.lifecycle}
-            </Text>
+            </AppText>
           </View>
-          <Text style={s.timeAgo}>{timeAgo(item.submitted_at)}</Text>
+          <AppText style={s.timeAgo}>{timeAgo(item.submitted_at)}</AppText>
           <Ionicons name={isExpanded ? 'chevron-up' : 'chevron-down'} size={14} color="#9CA3AF" />
         </View>
 
-        <Text style={s.title}>{detectDisasterType(item.description)}</Text>
-        <Text style={s.description} numberOfLines={isExpanded ? undefined : 2}>
+        <AppText style={s.title}>{getReportTitle(item.description, t)}</AppText>
+        <AppText style={s.description} numberOfLines={isExpanded ? undefined : 2}>
           {item.description}
-        </Text>
+        </AppText>
 
         <View style={s.cardFooter}>
           <View style={s.locationBlock}>
             <View style={s.locationRow}>
               <Ionicons name="location-sharp" size={13} color="#7C3AED" />
-              <Text style={s.locationText}>
-                {item.latitude.toFixed(4)}°N, {item.longitude.toFixed(4)}°E
-              </Text>
+              <AppText style={s.locationText}>{item.latitude.toFixed(4)}°N, {item.longitude.toFixed(4)}°E</AppText>
             </View>
           </View>
           <TouchableOpacity style={s.mapBtn} onPress={() => onViewMap(item)} activeOpacity={0.7}>
@@ -433,19 +383,17 @@ function ReportCard({ item, onViewMap, s, isExpanded, onToggle }: {
           <>
             <View style={s.expandDivider} />
             <View style={s.expandRow}>
-              <Text style={s.expandLabel}>Submitted</Text>
-              <Text style={s.expandValue}>{fullDate(item.submitted_at)}</Text>
+              <AppText style={s.expandLabel}>{t.common.submitted}</AppText>
+              <AppText style={s.expandValue}>{fullDate(item.submitted_at)}</AppText>
             </View>
             <View style={s.expandRow}>
-              <Text style={s.expandLabel}>Coordinates</Text>
-              <Text style={s.expandValue}>
-                {item.latitude.toFixed(6)}°N, {item.longitude.toFixed(6)}°E
-              </Text>
+              <AppText style={s.expandLabel}>{t.feed.coordinates}</AppText>
+              <AppText style={s.expandValue}>{item.latitude.toFixed(6)}°N, {item.longitude.toFixed(6)}°E</AppText>
             </View>
             {!!item.image_url && (
               <View style={s.expandRow}>
-                <Text style={s.expandLabel}>Photo</Text>
-                <Text style={s.expandValue}>Attached</Text>
+                <AppText style={s.expandLabel}>{t.report.photo}</AppText>
+                <AppText style={s.expandValue}>{t.feed.attached}</AppText>
               </View>
             )}
           </>

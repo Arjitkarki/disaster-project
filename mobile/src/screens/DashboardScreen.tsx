@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
-  View, Text, ScrollView, StyleSheet, ActivityIndicator,
+  View, ScrollView, StyleSheet, ActivityIndicator,
   TouchableOpacity, RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -12,6 +12,8 @@ import { SeverityColors, LifecycleColors, LightTheme, DarkTheme, AppTheme } from
 import { RootTabParamList } from '../navigation/AppNavigator';
 import { useIncidents } from '../context/IncidentsContext';
 import { useTheme } from '../context/ThemeContext';
+import { useLanguage } from '../context/LanguageContext';
+import { AppText } from '../components/AppText';
 
 type Nav = BottomTabNavigationProp<RootTabParamList>;
 
@@ -27,39 +29,14 @@ function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number) {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-const NAV_CARDS: {
-  tab: keyof RootTabParamList;
-  label: string;
-  icon: string;
-  color: string;
-  description: string;
-}[] = [
-  { tab: 'Feed',          label: 'Incident Feed', icon: 'list',       color: '#2563EB', description: 'All active incidents' },
-  { tab: 'LiveMap',       label: 'Live Map',      icon: 'map',        color: '#059669', description: 'Heatmap & GeoPins' },
-  { tab: 'CitizenReport', label: 'Report',        icon: 'add-circle', color: '#DC2626', description: 'Submit a new report' },
-  { tab: 'Support',       label: 'Support',       icon: 'call',       color: '#7C3AED', description: 'Contacts & NGOs' },
+const NAV_CARD_DEFS: { tab: keyof RootTabParamList; icon: string; color: string }[] = [
+  { tab: 'Feed',          icon: 'list',       color: '#2563EB' },
+  { tab: 'LiveMap',       icon: 'map',        color: '#059669' },
+  { tab: 'CitizenReport', icon: 'add-circle', color: '#DC2626' },
+  { tab: 'Support',       icon: 'call',       color: '#7C3AED' },
 ];
 
-const GUIDES = [
-  {
-    type: 'Earthquake',
-    icon: 'warning',
-    color: '#DC2626',
-    tips: ['Drop, Cover, Hold On', 'Stay away from windows', 'Do not use elevators', 'Once safe, move to open ground'],
-  },
-  {
-    type: 'Flood',
-    icon: 'water',
-    color: '#2563EB',
-    tips: ['Move to higher ground immediately', 'Do not walk through moving water', 'Avoid bridges over fast water', 'Follow evacuation routes'],
-  },
-  {
-    type: 'Landslide',
-    icon: 'earth',
-    color: '#92400E',
-    tips: ['Evacuate immediately', 'Alert nearby neighbors', 'Move away from the slide path', 'Do not re-enter until cleared'],
-  },
-];
+const GUIDE_ICONS = ['warning', 'water', 'earth'];
 
 function makeStyles(t: AppTheme) {
   return StyleSheet.create({
@@ -70,6 +47,12 @@ function makeStyles(t: AppTheme) {
     appName:      { fontSize: 26, fontWeight: '800', color: t.text },
     subtitle:     { fontSize: 13, color: t.subtext, marginTop: 2 },
     themeBtn:     { padding: 8, borderRadius: 8, marginTop: 2 },
+    headerBtns:   { flexDirection: 'row', alignItems: 'center', gap: 4 },
+    langBtn: {
+      paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8,
+      borderWidth: 1.5, borderColor: t.pillBorder, backgroundColor: t.card,
+    },
+    langBtnText:  { fontSize: 12, fontWeight: '800', color: t.sectionTitle },
 
     alertBanner: {
       flexDirection: 'row', alignItems: 'center', gap: 8,
@@ -127,12 +110,20 @@ function makeStyles(t: AppTheme) {
   });
 }
 
+const SEV_LABEL_KEY = {
+  CRITICAL: 'critical',
+  HIGH:     'high',
+  MODERATE: 'moderate',
+  LOW:      'low',
+} as const;
+
 export default function DashboardScreen() {
   const navigation = useNavigation<Nav>();
   const { incidents, loading, refreshing, refresh } = useIncidents();
   const { isDark, toggleTheme } = useTheme();
-  const t = isDark ? DarkTheme : LightTheme;
-  const s = useMemo(() => makeStyles(t), [t]);
+  const { lang, t, toggleLanguage } = useLanguage();
+  const theme = isDark ? DarkTheme : LightTheme;
+  const s = useMemo(() => makeStyles(theme), [theme]);
 
   const [userCoords, setUserCoords] = useState<{ lat: number; lon: number } | null>(null);
   const [locationDenied, setLocationDenied] = useState(false);
@@ -174,18 +165,23 @@ export default function DashboardScreen() {
           <View style={s.header}>
             <View style={s.headerRow}>
               <View>
-                <Text style={s.appName}>Nepal Disaster Hub</Text>
-                <Text style={s.subtitle}>
-                  {incidents.length} incidents tracked · {active} active
-                </Text>
+                <AppText style={s.appName}>{t.dashboard.appName}</AppText>
+                <AppText style={s.subtitle}>
+                  {incidents.length} {t.dashboard.trackedSuffix} · {active} {t.dashboard.activeSuffix}
+                </AppText>
               </View>
-              <TouchableOpacity onPress={toggleTheme} style={s.themeBtn} activeOpacity={0.7}>
-                <Ionicons
-                  name={isDark ? 'sunny' : 'moon'}
-                  size={22}
-                  color={isDark ? '#FBBF24' : '#6B7280'}
-                />
-              </TouchableOpacity>
+              <View style={s.headerBtns}>
+                <TouchableOpacity onPress={toggleLanguage} style={s.langBtn} activeOpacity={0.7}>
+                  <AppText style={s.langBtnText}>{lang === 'en' ? 'NE' : 'EN'}</AppText>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={toggleTheme} style={s.themeBtn} activeOpacity={0.7}>
+                  <Ionicons
+                    name={isDark ? 'sunny' : 'moon'}
+                    size={22}
+                    color={isDark ? '#FBBF24' : '#6B7280'}
+                  />
+                </TouchableOpacity>
+              </View>
             </View>
           </View>
 
@@ -193,9 +189,9 @@ export default function DashboardScreen() {
           {critical > 0 && (
             <View style={s.alertBanner}>
               <Ionicons name="alert-circle" size={18} color="#fff" />
-              <Text style={s.alertText}>
-                {critical} CRITICAL{high > 0 ? ` · ${high} HIGH` : ''} incident{critical + high !== 1 ? 's' : ''} right now
-              </Text>
+              <AppText style={s.alertText}>
+                {critical} {t.common.critical.toUpperCase()}{high > 0 ? ` · ${high} ${t.common.high.toUpperCase()}` : ''} incident{critical + high !== 1 ? 's' : ''}
+              </AppText>
             </View>
           )}
 
@@ -203,27 +199,27 @@ export default function DashboardScreen() {
           <View style={s.statsRow}>
             {(['CRITICAL', 'HIGH', 'MODERATE', 'LOW'] as const).map(sev => (
               <View key={sev} style={[s.statChip, { borderColor: SeverityColors[sev] }]}>
-                <Text style={[s.statNum, { color: SeverityColors[sev] }]}>
+                <AppText style={[s.statNum, { color: SeverityColors[sev] }]}>
                   {incidents.filter(i => i.severity === sev).length}
-                </Text>
-                <Text style={s.statLabel}>{sev}</Text>
+                </AppText>
+                <AppText style={s.statLabel}>{t.common[SEV_LABEL_KEY[sev]]}</AppText>
               </View>
             ))}
           </View>
 
           {/* Nearby Risk */}
-          <Text style={s.sectionTitle}>Nearby Risk</Text>
+          <AppText style={s.sectionTitle}>{t.dashboard.nearbyRisk}</AppText>
           {locationDenied ? (
             <View style={s.locationPrompt}>
-              <Ionicons name="location-outline" size={15} color={t.muted} />
-              <Text style={s.locationPromptText}>Enable location for nearby risks</Text>
+              <Ionicons name="location-outline" size={15} color={theme.muted} />
+              <AppText style={s.locationPromptText}>{t.dashboard.enableLocation}</AppText>
             </View>
           ) : !userCoords ? (
-            <ActivityIndicator size="small" color={t.muted} style={s.nearbyLoader} />
+            <ActivityIndicator size="small" color={theme.muted} style={s.nearbyLoader} />
           ) : nearbyRisks.length === 0 ? (
             <View style={s.locationPrompt}>
-              <Ionicons name="checkmark-circle-outline" size={15} color={t.muted} />
-              <Text style={s.locationPromptText}>No HIGH or CRITICAL incidents nearby</Text>
+              <Ionicons name="checkmark-circle-outline" size={15} color={theme.muted} />
+              <AppText style={s.locationPromptText}>{t.dashboard.noNearby}</AppText>
             </View>
           ) : (
             <ScrollView
@@ -235,12 +231,14 @@ export default function DashboardScreen() {
                 <View key={incident.id} style={s.nearbyCard}>
                   <View style={[s.nearbySeverityBar, { backgroundColor: SeverityColors[incident.severity] }]} />
                   <View style={s.nearbyContent}>
-                    <Text style={s.nearbyTitle} numberOfLines={2}>{incident.title}</Text>
-                    <Text style={s.nearbyDist}>{incident.distanceKm.toFixed(1)} km away</Text>
+                    <AppText style={s.nearbyTitle} numberOfLines={2}>
+                      {lang === 'ne' && incident.title_ne ? incident.title_ne : incident.title}
+                    </AppText>
+                    <AppText style={s.nearbyDist}>{incident.distanceKm.toFixed(1)} {t.dashboard.kmAway}</AppText>
                     <View style={[s.lifecycleBadge, { backgroundColor: LifecycleColors[incident.lifecycle] + '22' }]}>
-                      <Text style={[s.lifecycleBadgeText, { color: LifecycleColors[incident.lifecycle] }]}>
+                      <AppText style={[s.lifecycleBadgeText, { color: LifecycleColors[incident.lifecycle] }]}>
                         {incident.lifecycle}
-                      </Text>
+                      </AppText>
                     </View>
                   </View>
                 </View>
@@ -249,9 +247,14 @@ export default function DashboardScreen() {
           )}
 
           {/* Quick access nav cards */}
-          <Text style={s.sectionTitle}>Quick Access</Text>
+          <AppText style={s.sectionTitle}>{t.dashboard.quickAccess}</AppText>
           <View style={s.navGrid}>
-            {NAV_CARDS.map(card => (
+            {([
+              { ...NAV_CARD_DEFS[0], label: t.dashboard.navCards.feedLabel,    desc: t.dashboard.navCards.feedDesc    },
+              { ...NAV_CARD_DEFS[1], label: t.dashboard.navCards.mapLabel,     desc: t.dashboard.navCards.mapDesc     },
+              { ...NAV_CARD_DEFS[2], label: t.dashboard.navCards.reportLabel,  desc: t.dashboard.navCards.reportDesc  },
+              { ...NAV_CARD_DEFS[3], label: t.dashboard.navCards.supportLabel, desc: t.dashboard.navCards.supportDesc },
+            ]).map(card => (
               <TouchableOpacity
                 key={card.tab}
                 style={s.navCard}
@@ -261,30 +264,34 @@ export default function DashboardScreen() {
                 <View style={[s.navIcon, { backgroundColor: card.color + '18' }]}>
                   <Ionicons name={card.icon as any} size={26} color={card.color} />
                 </View>
-                <Text style={s.navLabel}>{card.label}</Text>
-                <Text style={s.navDesc}>{card.description}</Text>
+                <AppText style={s.navLabel}>{card.label}</AppText>
+                <AppText style={s.navDesc}>{card.desc}</AppText>
               </TouchableOpacity>
             ))}
           </View>
 
           {/* Emergency guides */}
-          <Text style={s.sectionTitle}>Emergency Guides</Text>
-          {GUIDES.map(guide => (
-            <View key={guide.type} style={s.guideCard}>
-              <View style={s.guideHeader}>
-                <View style={[s.guideIconWrap, { backgroundColor: guide.color + '18' }]}>
-                  <Ionicons name={guide.icon as any} size={20} color={guide.color} />
+          <AppText style={s.sectionTitle}>{t.dashboard.guides}</AppText>
+          {t.dashboard.guideData.map((guide, gi) => {
+            const colors = ['#DC2626', '#2563EB', '#92400E'];
+            const color = colors[gi];
+            return (
+              <View key={guide.type} style={s.guideCard}>
+                <View style={s.guideHeader}>
+                  <View style={[s.guideIconWrap, { backgroundColor: color + '18' }]}>
+                    <Ionicons name={GUIDE_ICONS[gi] as any} size={20} color={color} />
+                  </View>
+                  <AppText style={[s.guideType, { color }]}>{guide.type}</AppText>
                 </View>
-                <Text style={[s.guideType, { color: guide.color }]}>{guide.type}</Text>
+                {guide.tips.map((tip, i) => (
+                  <View key={i} style={s.tipRow}>
+                    <AppText style={[s.tipNum, { color }]}>{i + 1}</AppText>
+                    <AppText style={s.tipText}>{tip}</AppText>
+                  </View>
+                ))}
               </View>
-              {guide.tips.map((tip, i) => (
-                <View key={i} style={s.tipRow}>
-                  <Text style={[s.tipNum, { color: guide.color }]}>{i + 1}</Text>
-                  <Text style={s.tipText}>{tip}</Text>
-                </View>
-              ))}
-            </View>
-          ))}
+            );
+          })}
         </ScrollView>
       )}
     </SafeAreaView>

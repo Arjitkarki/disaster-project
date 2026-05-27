@@ -1,11 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  View, Text, StyleSheet, ActivityIndicator,
+  View, StyleSheet, ActivityIndicator,
   TouchableOpacity, TextInput, ScrollView,
 } from 'react-native';
+import { AppText } from '../components/AppText';
 import MapboxGL from '@rnmapbox/maps';
 import { Ionicons } from '@expo/vector-icons';
-import { useRoute, RouteProp, useFocusEffect } from '@react-navigation/native';
+import { useRoute, RouteProp, useFocusEffect, useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MAPBOX_TOKEN } from '../constants/api';
 import { SeverityColors, LifecycleColors, LightTheme, DarkTheme, AppTheme } from '../constants/colors';
@@ -13,6 +14,7 @@ import { Incident, Severity } from '../types';
 import { RootTabParamList } from '../navigation/AppNavigator';
 import { useIncidents } from '../context/IncidentsContext';
 import { useTheme } from '../context/ThemeContext';
+import { useLanguage } from '../context/LanguageContext';
 
 MapboxGL.setAccessToken(MAPBOX_TOKEN);
 
@@ -37,29 +39,30 @@ type PlaceResult = {
   coordinates: [number, number];
 };
 
-const SEVERITY_CHIPS: { key: Severity; label: string; color: string }[] = [
-  { key: 'CRITICAL', label: 'Critical', color: '#DC2626' },
-  { key: 'HIGH',     label: 'High',     color: '#EA580C' },
-  { key: 'LOW',      label: 'Low',      color: '#16A34A' },
+const SEVERITY_CHIP_DEFS: { key: Severity; color: string }[] = [
+  { key: 'CRITICAL', color: '#DC2626' },
+  { key: 'HIGH',     color: '#EA580C' },
+  { key: 'LOW',      color: '#16A34A' },
 ];
 
-const TYPE_CHIPS: { key: string; label: string; color: string }[] = [
-  { key: 'earthquake',    label: 'Earthquake',    color: '#7C3AED' },
-  { key: 'flood',         label: 'Flood',         color: '#0EA5E9' },
-  { key: 'landslide',     label: 'Landslide',     color: '#92400E' },
-  { key: 'forest fire',   label: 'Forest Fire',   color: '#B45309' },
-  { key: 'heavy rainfall', label: 'Heavy Rain',   color: '#0369A1' },
-  { key: 'road closed',   label: 'Road Closed',   color: '#6B7280' },
-  { key: 'heatwave',      label: 'Heatwave',      color: '#F59E0B' },
-  { key: 'fire',          label: 'Fire',          color: '#EA580C' },
+const TYPE_CHIP_DEFS: { key: string; color: string }[] = [
+  { key: 'earthquake',     color: '#7C3AED' },
+  { key: 'flood',          color: '#0EA5E9' },
+  { key: 'landslide',      color: '#92400E' },
+  { key: 'forest fire',    color: '#B45309' },
+  { key: 'heavy rainfall', color: '#0369A1' },
+  { key: 'road closed',    color: '#6B7280' },
+  { key: 'heatwave',       color: '#F59E0B' },
+  { key: 'fire',           color: '#EA580C' },
 ];
 
-const TIME_CHIPS: { key: TimeWindow; label: string }[] = [
-  { key: 'all',  label: 'All'  },
-  { key: '24hr', label: '24hr' },
-  { key: '7d',   label: '7d'   },
+const TIME_CHIP_DEFS: { key: TimeWindow }[] = [
+  { key: 'all'  },
+  { key: '24hr' },
+  { key: '7d'   },
 ];
 const TIME_ACTIVE_COLOR = '#7C3AED';
+type MapStyle = 'default' | 'satellite';
 
 
 function detectType(incident: Incident): string | null {
@@ -214,16 +217,19 @@ function makeStyles(t: AppTheme) {
       bottom: 0,
       left: 0,
       right: 0,
+      maxHeight: '55%',
       backgroundColor: t.sheetBg,
       borderTopLeftRadius: 16,
       borderTopRightRadius: 16,
-      padding: 20,
+      paddingTop: 20,
+      paddingHorizontal: 20,
       paddingBottom: 36,
       shadowColor: '#000',
       shadowOpacity: 0.15,
       shadowRadius: 12,
       elevation: 8,
     },
+    sheetScroll: { flex: 1 },
     sheetClose: {
       position: 'absolute',
       top: 16,
@@ -245,6 +251,13 @@ function makeStyles(t: AppTheme) {
     sheetLocationRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 4 },
     sheetLocationText:{ fontSize: 13, color: t.sectionTitle, fontWeight: '600' },
     sheetCoords:      { fontSize: 12, color: t.muted },
+    sheetDate:        { fontSize: 12, color: t.muted, marginTop: 4 },
+    sheetResetBtn: {
+      flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+      gap: 6, marginTop: 16, paddingVertical: 10, borderRadius: 10,
+      borderWidth: 1.5, borderColor: t.pillBorder, backgroundColor: t.card,
+    },
+    sheetResetText: { fontSize: 13, fontWeight: '600', color: t.sectionTitle },
 
     zoomControls: {
       position: 'absolute',
@@ -271,6 +284,18 @@ function makeStyles(t: AppTheme) {
       color: t.zoomBtnText,
       lineHeight: 26,
     },
+    layersBtn: {
+      width: 44,
+      height: 44,
+      borderRadius: 10,
+      alignItems: 'center',
+      justifyContent: 'center',
+      shadowColor: '#000',
+      shadowOpacity: 0.15,
+      shadowRadius: 6,
+      shadowOffset: { width: 0, height: 2 },
+      elevation: 4,
+    },
   });
 }
 
@@ -278,10 +303,12 @@ function makeStyles(t: AppTheme) {
 
 export default function LiveMapScreen() {
   const route = useRoute<LiveMapRoute>();
+  const navigation = useNavigation();
   const { incidents, loading } = useIncidents();
   const { isDark } = useTheme();
-  const t = isDark ? DarkTheme : LightTheme;
-  const s = useMemo(() => makeStyles(t), [t]);
+  const { lang, t } = useLanguage();
+  const theme = isDark ? DarkTheme : LightTheme;
+  const s = useMemo(() => makeStyles(theme), [theme]);
   const insets = useSafeAreaInsets();
 
   const [selectedIncident, setSelectedIncident] = useState<Incident | null>(null);
@@ -292,6 +319,11 @@ export default function LiveMapScreen() {
   const [severityFilters, setSeverityFilters] = useState<Severity[]>([]);
   const [typeFilters, setTypeFilters]         = useState<string[]>([]);
   const [timeFilter, setTimeFilter]           = useState<TimeWindow>('all');
+  const [mapStyle, setMapStyle]               = useState<MapStyle>('default');
+
+  const activeStyleURL = mapStyle === 'satellite'
+    ? MapboxGL.StyleURL.SatelliteStreet
+    : isDark ? MapboxGL.StyleURL.Dark : MapboxGL.StyleURL.Light;
 
   const focusLat = route.params?.focusLat;
   const focusLng = route.params?.focusLng;
@@ -313,6 +345,11 @@ export default function LiveMapScreen() {
     });
   }, []);
 
+  const resetView = useCallback(() => {
+    flyTo(NEPAL_CENTER, INITIAL_ZOOM);
+    setSelectedIncident(null);
+  }, [flyTo]);
+
   useFocusEffect(
     useCallback(() => {
       if (focusLat != null && focusLng != null) {
@@ -321,9 +358,17 @@ export default function LiveMapScreen() {
           const found = incidents.find(i => i.id === focusId);
           if (found) setSelectedIncident(found);
         }
+        navigation.setParams({ focusLat: undefined, focusLng: undefined, focusId: undefined } as any);
       }
-    }, [focusLat, focusLng, focusId, incidents, flyTo])
+    }, [focusLat, focusLng, focusId, incidents, flyTo, navigation])
   );
+
+  // Tapping the LiveMap tab while already on it resets the view
+  useEffect(() => {
+    return navigation.addListener('tabPress' as any, () => {
+      if (navigation.isFocused()) resetView();
+    });
+  }, [navigation, resetView]);
 
   // Mapbox geocoding for place search
   useEffect(() => {
@@ -439,6 +484,17 @@ export default function LiveMapScreen() {
   const showResults     = showDropdown && !!searchText;
 
 
+  const typeChipLabel: Record<string, string> = {
+    'earthquake':     t.common.earthquake,
+    'flood':          t.common.flood,
+    'landslide':      t.common.landslide,
+    'forest fire':    t.common.forestFire,
+    'heavy rainfall': t.common.heavyRain,
+    'road closed':    t.common.roadClosed,
+    'heatwave':       t.common.heatwave,
+    'fire':           t.common.fire,
+  };
+
   function renderFilterChips() {
     return (
       <View style={s.filterRow}>
@@ -448,8 +504,9 @@ export default function LiveMapScreen() {
           contentContainerStyle={s.filterRowContent}
           keyboardShouldPersistTaps="handled"
         >
-          {SEVERITY_CHIPS.map(chip => {
+          {SEVERITY_CHIP_DEFS.map(chip => {
             const active = severityFilters.includes(chip.key);
+            const label = chip.key === 'CRITICAL' ? t.common.critical : chip.key === 'HIGH' ? t.common.high : t.common.low;
             return (
               <TouchableOpacity
                 key={chip.key}
@@ -457,14 +514,14 @@ export default function LiveMapScreen() {
                 style={[s.chip, active && { backgroundColor: chip.color, borderColor: chip.color }]}
                 activeOpacity={0.7}
               >
-                <Text style={[s.chipText, active && { color: '#fff' }]}>{chip.label}</Text>
+                <AppText style={[s.chipText, active && { color: '#fff' }]}>{label}</AppText>
               </TouchableOpacity>
             );
           })}
 
           <View style={s.chipDivider} />
 
-          {TYPE_CHIPS.map(chip => {
+          {TYPE_CHIP_DEFS.map(chip => {
             const active = typeFilters.includes(chip.key);
             return (
               <TouchableOpacity
@@ -473,15 +530,16 @@ export default function LiveMapScreen() {
                 style={[s.chip, active && { backgroundColor: chip.color, borderColor: chip.color }]}
                 activeOpacity={0.7}
               >
-                <Text style={[s.chipText, active && { color: '#fff' }]}>{chip.label}</Text>
+                <AppText style={[s.chipText, active && { color: '#fff' }]}>{typeChipLabel[chip.key] ?? chip.key}</AppText>
               </TouchableOpacity>
             );
           })}
 
           <View style={s.chipDivider} />
 
-          {TIME_CHIPS.map(chip => {
+          {TIME_CHIP_DEFS.map(chip => {
             const active = timeFilter === chip.key;
+            const label = chip.key === 'all' ? t.map.all : chip.key;
             return (
               <TouchableOpacity
                 key={chip.key}
@@ -489,7 +547,7 @@ export default function LiveMapScreen() {
                 style={[s.chip, active && { backgroundColor: TIME_ACTIVE_COLOR, borderColor: TIME_ACTIVE_COLOR }]}
                 activeOpacity={0.7}
               >
-                <Text style={[s.chipText, active && { color: '#fff' }]}>{chip.label}</Text>
+                <AppText style={[s.chipText, active && { color: '#fff' }]}>{label}</AppText>
               </TouchableOpacity>
             );
           })}
@@ -508,7 +566,7 @@ export default function LiveMapScreen() {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          <Text style={s.suggestionLabel}>Nearby High Risk</Text>
+          <AppText style={s.suggestionLabel}>{t.map.nearbyHighRisk}</AppText>
           {nearbySuggestions.map((incident, idx) => (
             <TouchableOpacity
               key={incident.id}
@@ -518,10 +576,10 @@ export default function LiveMapScreen() {
             >
               <View style={[s.severityDot, { backgroundColor: SeverityColors[incident.severity] }]} />
               <View style={s.resultTextCol}>
-                <Text style={s.resultTitle} numberOfLines={1}>{incident.title}</Text>
-                <Text style={s.resultMeta}>{incident.zone.district}</Text>
+                <AppText style={s.resultTitle} numberOfLines={1}>{incident.title}</AppText>
+                <AppText style={s.resultMeta}>{incident.zone.district}</AppText>
               </View>
-              <Ionicons name="chevron-forward" size={14} color={t.muted} />
+              <Ionicons name="chevron-forward" size={14} color={theme.muted} />
             </TouchableOpacity>
           ))}
         </ScrollView>
@@ -535,7 +593,7 @@ export default function LiveMapScreen() {
       if (!hasIncidents && !hasPlaces) {
         return (
           <View style={[s.dropdown, s.noResults]}>
-            <Text style={s.noResultsText}>No results</Text>
+            <AppText style={s.noResultsText}>{t.map.noResults}</AppText>
           </View>
         );
       }
@@ -548,7 +606,7 @@ export default function LiveMapScreen() {
         >
           {hasIncidents && (
             <>
-              <Text style={s.suggestionLabel}>Incidents</Text>
+              <AppText style={s.suggestionLabel}>{t.map.incidents}</AppText>
               {searchResults!.map((incident, idx) => (
                 <TouchableOpacity
                   key={incident.id}
@@ -558,10 +616,10 @@ export default function LiveMapScreen() {
                 >
                   <View style={[s.severityDot, { backgroundColor: SeverityColors[incident.severity] }]} />
                   <View style={s.resultTextCol}>
-                    <Text style={s.resultTitle} numberOfLines={1}>{incident.title}</Text>
-                    <Text style={s.resultMeta}>{incident.zone.district}</Text>
+                    <AppText style={s.resultTitle} numberOfLines={1}>{incident.title}</AppText>
+                    <AppText style={s.resultMeta}>{incident.zone.district}</AppText>
                   </View>
-                  <Ionicons name="chevron-forward" size={14} color={t.muted} />
+                  <Ionicons name="chevron-forward" size={14} color={theme.muted} />
                 </TouchableOpacity>
               ))}
             </>
@@ -569,7 +627,7 @@ export default function LiveMapScreen() {
 
           {hasPlaces && (
             <>
-              <Text style={s.suggestionLabel}>Places in Nepal</Text>
+              <AppText style={s.suggestionLabel}>{t.map.placesInNepal}</AppText>
               {placeResults.map((place, idx) => (
                 <TouchableOpacity
                   key={place.place}
@@ -577,12 +635,12 @@ export default function LiveMapScreen() {
                   onPress={() => handlePlacePress(place)}
                   activeOpacity={0.7}
                 >
-                  <Ionicons name="location-outline" size={14} color={t.muted} />
+                  <Ionicons name="location-outline" size={14} color={theme.muted} />
                   <View style={s.resultTextCol}>
-                    <Text style={s.resultTitle} numberOfLines={1}>{place.name}</Text>
-                    <Text style={s.resultMeta} numberOfLines={1}>{place.place}</Text>
+                    <AppText style={s.resultTitle} numberOfLines={1}>{place.name}</AppText>
+                    <AppText style={s.resultMeta} numberOfLines={1}>{place.place}</AppText>
                   </View>
-                  <Ionicons name="chevron-forward" size={14} color={t.muted} />
+                  <Ionicons name="chevron-forward" size={14} color={theme.muted} />
                 </TouchableOpacity>
               ))}
             </>
@@ -600,7 +658,7 @@ export default function LiveMapScreen() {
     <View style={s.container}>
       <MapboxGL.MapView
         style={s.map}
-        styleURL={isDark ? MapboxGL.StyleURL.Dark : MapboxGL.StyleURL.Light}
+        styleURL={activeStyleURL}
         scaleBarPosition={{ bottom: 8, left: 8 }}
         onPress={() => { setSelectedIncident(null); setSearchFocused(false); }}
         zoomEnabled
@@ -703,11 +761,11 @@ export default function LiveMapScreen() {
       <View style={[s.searchShadow, { top: insets.top + 10 }]}>
         <View style={s.searchPanel}>
           <View style={s.searchBar}>
-            <Ionicons name="search" size={16} color={t.muted} />
+            <Ionicons name="search" size={16} color={theme.muted} />
             <TextInput
               style={s.searchInput}
-              placeholder="Search incidents, districts or places…"
-              placeholderTextColor={t.muted}
+              placeholder={t.map.searchPlaceholder}
+              placeholderTextColor={theme.muted}
               value={searchText}
               onChangeText={setSearchText}
               onFocus={() => setSearchFocused(true)}
@@ -721,7 +779,7 @@ export default function LiveMapScreen() {
                 onPress={() => { setSearchText(''); setPlaceResults([]); }}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               >
-                <Ionicons name="close-circle" size={18} color={t.muted} />
+                <Ionicons name="close-circle" size={18} color={theme.muted} />
               </TouchableOpacity>
             )}
           </View>
@@ -731,7 +789,7 @@ export default function LiveMapScreen() {
         </View>
       </View>
 
-      {/* Zoom controls */}
+      {/* Zoom + layers controls */}
       <View style={s.zoomControls}>
         <TouchableOpacity
           style={s.zoomBtn}
@@ -740,7 +798,7 @@ export default function LiveMapScreen() {
             cameraRef.current?.setCamera({ zoomLevel: zoomRef.current, animationDuration: 200 });
           }}
         >
-          <Text style={s.zoomBtnText}>+</Text>
+          <AppText style={s.zoomBtnText}>+</AppText>
         </TouchableOpacity>
         <TouchableOpacity
           style={s.zoomBtn}
@@ -749,7 +807,23 @@ export default function LiveMapScreen() {
             cameraRef.current?.setCamera({ zoomLevel: zoomRef.current, animationDuration: 200 });
           }}
         >
-          <Text style={s.zoomBtnText}>−</Text>
+          <AppText style={s.zoomBtnText}>−</AppText>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[
+            s.layersBtn,
+            mapStyle === 'satellite'
+              ? { backgroundColor: '#2563EB' }
+              : { backgroundColor: theme.zoomBtnBg },
+          ]}
+          onPress={() => setMapStyle(m => m === 'default' ? 'satellite' : 'default')}
+          activeOpacity={0.8}
+        >
+          <Ionicons
+            name="layers"
+            size={20}
+            color={mapStyle === 'satellite' ? '#fff' : theme.zoomBtnText}
+          />
         </TouchableOpacity>
       </View>
 
@@ -757,34 +831,51 @@ export default function LiveMapScreen() {
       {selectedIncident && (
         <View style={s.sheet}>
           <TouchableOpacity style={s.sheetClose} onPress={() => setSelectedIncident(null)}>
-            <Ionicons name="close" size={20} color={t.sectionTitle} />
+            <Ionicons name="close" size={20} color={theme.sectionTitle} />
           </TouchableOpacity>
 
-          <View style={s.sheetBadgeRow}>
-            <View style={[s.severityBadge, { backgroundColor: SeverityColors[selectedIncident.severity] }]}>
-              <Text style={s.severityText}>{selectedIncident.severity}</Text>
+          <ScrollView
+            style={s.sheetScroll}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+          >
+            <View style={s.sheetBadgeRow}>
+              <View style={[s.severityBadge, { backgroundColor: SeverityColors[selectedIncident.severity] }]}>
+                <AppText style={s.severityText}>{selectedIncident.severity}</AppText>
+              </View>
+              <View style={[s.lifecycleBadge, { borderColor: LifecycleColors[selectedIncident.lifecycle] }]}>
+                <AppText style={[s.lifecycleText, { color: LifecycleColors[selectedIncident.lifecycle] }]}>
+                  {selectedIncident.lifecycle}
+                </AppText>
+              </View>
             </View>
-            <View style={[s.lifecycleBadge, { borderColor: LifecycleColors[selectedIncident.lifecycle] }]}>
-              <Text style={[s.lifecycleText, { color: LifecycleColors[selectedIncident.lifecycle] }]}>
-                {selectedIncident.lifecycle}
-              </Text>
+
+            <AppText style={s.sheetTitle}>{lang === 'ne' && selectedIncident.title_ne ? selectedIncident.title_ne : selectedIncident.title}</AppText>
+            <AppText style={s.sheetDesc}>{selectedIncident.description}</AppText>
+
+            <View style={s.sheetLocationRow}>
+              <Ionicons name="location-sharp" size={13} color="#DC2626" />
+              <AppText style={s.sheetLocationText}>
+                {selectedIncident.zone.district}
+                {selectedIncident.zone.municipality ? ` · ${selectedIncident.zone.municipality}` : ''}
+              </AppText>
             </View>
-          </View>
 
-          <Text style={s.sheetTitle}>{selectedIncident.title}</Text>
-          <Text style={s.sheetDesc}>{selectedIncident.description}</Text>
+            <AppText style={s.sheetCoords}>
+              {selectedIncident.latitude.toFixed(4)}°N, {selectedIncident.longitude.toFixed(4)}°E
+            </AppText>
+            <AppText style={s.sheetDate}>
+              {new Date(selectedIncident.reported_at).toLocaleString('en-US', {
+                month: 'short', day: 'numeric', year: 'numeric',
+                hour: '2-digit', minute: '2-digit',
+              })}
+            </AppText>
 
-          <View style={s.sheetLocationRow}>
-            <Ionicons name="location-sharp" size={13} color="#DC2626" />
-            <Text style={s.sheetLocationText}>
-              {selectedIncident.zone.district}
-              {selectedIncident.zone.municipality ? ` · ${selectedIncident.zone.municipality}` : ''}
-            </Text>
-          </View>
-
-          <Text style={s.sheetCoords}>
-            {selectedIncident.latitude.toFixed(4)}°N, {selectedIncident.longitude.toFixed(4)}°E
-          </Text>
+            <TouchableOpacity style={s.sheetResetBtn} onPress={resetView} activeOpacity={0.75}>
+              <Ionicons name="earth-outline" size={15} color={theme.sectionTitle} />
+              <AppText style={s.sheetResetText}>{t.map.showAll}</AppText>
+            </TouchableOpacity>
+          </ScrollView>
         </View>
       )}
     </View>
