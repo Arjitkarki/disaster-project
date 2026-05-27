@@ -20,16 +20,18 @@ type FeedItem =
   | { kind: 'incident'; data: Incident; date: Date }
   | { kind: 'report'; data: ReportResponse; date: Date };
 
-const SEVERITY_FILTERS: Array<Severity | null> = [null, 'CRITICAL', 'HIGH', 'MODERATE', 'LOW'];
+type SeverityOrSource = Severity | 'CITIZEN' | null;
+const SEVERITY_FILTERS: Array<SeverityOrSource> = [null, 'CRITICAL', 'HIGH', 'MODERATE', 'LOW', 'CITIZEN'];
 const FILTER_LABELS: Record<string, string> = {
-  null: 'All', CRITICAL: 'Critical', HIGH: 'High', MODERATE: 'Moderate', LOW: 'Low',
+  null: 'All', CRITICAL: 'Critical', HIGH: 'High', MODERATE: 'Moderate', LOW: 'Low', CITIZEN: 'Citizen',
 };
 
-type DisasterType = 'EARTHQUAKE' | 'FLOOD' | 'LANDSLIDE' | 'FOREST_FIRE' | 'FIRE' | 'HEATWAVE';
-const DISASTER_FILTERS: Array<DisasterType | null> = [null, 'EARTHQUAKE', 'FLOOD', 'LANDSLIDE', 'FOREST_FIRE', 'FIRE', 'HEATWAVE'];
+type DisasterType = 'EARTHQUAKE' | 'FLOOD' | 'LANDSLIDE' | 'FOREST_FIRE' | 'FIRE' | 'HEATWAVE' | 'ROAD_CLOSED' | 'HEAVY_RAINFALL';
+const DISASTER_FILTERS: Array<DisasterType | null> = [null, 'EARTHQUAKE', 'FLOOD', 'LANDSLIDE', 'FOREST_FIRE', 'FIRE', 'HEATWAVE', 'ROAD_CLOSED', 'HEAVY_RAINFALL'];
 const DISASTER_LABELS: Record<string, string> = {
   null: 'All Types', EARTHQUAKE: 'Earthquake', FLOOD: 'Flood',
   LANDSLIDE: 'Landslide', FOREST_FIRE: 'Forest Fire', FIRE: 'Fire', HEATWAVE: 'Heatwave',
+  ROAD_CLOSED: 'Road Closed', HEAVY_RAINFALL: 'Heavy Rainfall',
 };
 
 function getDisasterType(text: string): DisasterType | null {
@@ -38,6 +40,8 @@ function getDisasterType(text: string): DisasterType | null {
   if (t.includes('flood') || t.includes('flooding')) return 'FLOOD';
   if (t.includes('landslide') || t.includes('land slide')) return 'LANDSLIDE';
   if (t.includes('forest fire') || t.includes('wildfire')) return 'FOREST_FIRE';
+  if (t.includes('road') && (t.includes('closed') || t.includes('block'))) return 'ROAD_CLOSED';
+  if (t.includes('heavy rain') || t.includes('rainfall')) return 'HEAVY_RAINFALL';
   if (t.includes('fire')) return 'FIRE';
   if (t.includes('heat') || t.includes('heatwave')) return 'HEATWAVE';
   return null;
@@ -49,6 +53,8 @@ function detectDisasterType(description: string): string {
   if (type === 'FLOOD') return 'Flood Report';
   if (type === 'LANDSLIDE') return 'Landslide Report';
   if (type === 'FOREST_FIRE') return 'Forest Fire Report';
+  if (type === 'ROAD_CLOSED') return 'Road Closure Report';
+  if (type === 'HEAVY_RAINFALL') return 'Heavy Rainfall Report';
   if (type === 'FIRE') return 'Fire Report';
   if (type === 'HEATWAVE') return 'Heatwave Report';
   return 'Citizen Report';
@@ -136,7 +142,7 @@ export default function FeedScreen() {
   const t = isDark ? DarkTheme : LightTheme;
   const s = useMemo(() => makeStyles(t), [t]);
 
-  const [severityFilter, setSeverityFilter] = useState<Severity | null>(null);
+  const [severityFilter, setSeverityFilter] = useState<SeverityOrSource>(null);
   const [disasterFilter, setDisasterFilter] = useState<DisasterType | null>(null);
   const [reports, setReports] = useState<ReportResponse[]>([]);
   const [sortMode, setSortMode] = useState<'newest' | 'oldest'>('newest');
@@ -159,16 +165,21 @@ export default function FeedScreen() {
   }, [navigation, fetchReports]);
 
   const feedItems = useMemo<FeedItem[]>(() => {
+    const filteredReports = reports
+      .filter(r => !disasterFilter || getDisasterType(r.description) === disasterFilter)
+      .map(r => ({ kind: 'report' as const, data: r, date: new Date(r.submitted_at) }));
+
+    if (severityFilter === 'CITIZEN') {
+      if (sortMode === 'oldest') return filteredReports.sort((a, b) => a.date.getTime() - b.date.getTime());
+      return filteredReports.sort((a, b) => b.date.getTime() - a.date.getTime());
+    }
+
     const incidentItems = incidents
       .filter(i => !severityFilter || i.severity === severityFilter)
       .filter(i => !disasterFilter || getDisasterType(`${i.title} ${i.description}`) === disasterFilter)
       .map(i => ({ kind: 'incident' as const, data: i, date: new Date(i.reported_at) }));
 
-    const reportItems = reports
-      .filter(r => !disasterFilter || getDisasterType(r.description) === disasterFilter)
-      .map(r => ({ kind: 'report' as const, data: r, date: new Date(r.submitted_at) }));
-
-    const items = [...incidentItems, ...reportItems];
+    const items = [...incidentItems, ...filteredReports];
     if (sortMode === 'oldest') return items.sort((a, b) => a.date.getTime() - b.date.getTime());
     return items.sort((a, b) => b.date.getTime() - a.date.getTime());
   }, [incidents, reports, severityFilter, disasterFilter, sortMode]);
@@ -178,6 +189,14 @@ export default function FeedScreen() {
       focusLat: item.latitude,
       focusLng: item.longitude,
       focusId: item.id,
+    });
+  };
+
+  const viewReportOnMap = (item: ReportResponse) => {
+    navigation.navigate('LiveMap', {
+      focusLat: item.latitude,
+      focusLng: item.longitude,
+      focusId: '',
     });
   };
 
@@ -266,6 +285,7 @@ export default function FeedScreen() {
                 />
               : <ReportCard
                   item={item.data}
+                  onViewMap={viewReportOnMap}
                   s={s}
                   isExpanded={expandedId === item.data.id}
                   onToggle={() => toggleExpand(item.data.id)}
@@ -366,8 +386,9 @@ function IncidentCard({ item, onViewMap, s, isExpanded, onToggle }: {
   );
 }
 
-function ReportCard({ item, s, isExpanded, onToggle }: {
+function ReportCard({ item, onViewMap, s, isExpanded, onToggle }: {
   item: ReportResponse;
+  onViewMap: (item: ReportResponse) => void;
   s: S;
   isExpanded: boolean;
   onToggle: () => void;
@@ -394,11 +415,18 @@ function ReportCard({ item, s, isExpanded, onToggle }: {
           {item.description}
         </Text>
 
-        <View style={s.locationRow}>
-          <Ionicons name="location-sharp" size={13} color="#7C3AED" />
-          <Text style={s.locationText}>
-            {item.latitude.toFixed(4)}°N, {item.longitude.toFixed(4)}°E
-          </Text>
+        <View style={s.cardFooter}>
+          <View style={s.locationBlock}>
+            <View style={s.locationRow}>
+              <Ionicons name="location-sharp" size={13} color="#7C3AED" />
+              <Text style={s.locationText}>
+                {item.latitude.toFixed(4)}°N, {item.longitude.toFixed(4)}°E
+              </Text>
+            </View>
+          </View>
+          <TouchableOpacity style={s.mapBtn} onPress={() => onViewMap(item)} activeOpacity={0.7}>
+            <Ionicons name="map-outline" size={20} color="#2563EB" />
+          </TouchableOpacity>
         </View>
 
         {isExpanded && (

@@ -44,12 +44,14 @@ const SEVERITY_CHIPS: { key: Severity; label: string; color: string }[] = [
 ];
 
 const TYPE_CHIPS: { key: string; label: string; color: string }[] = [
-  { key: 'earthquake',  label: 'Earthquake',  color: '#7C3AED' },
-  { key: 'flood',       label: 'Flood',       color: '#0EA5E9' },
-  { key: 'landslide',   label: 'Landslide',   color: '#92400E' },
-  { key: 'forest fire', label: 'Forest Fire', color: '#B45309' },
-  { key: 'heatwave',    label: 'Heatwave',    color: '#F59E0B' },
-  { key: 'fire',        label: 'Fire',        color: '#EA580C' },
+  { key: 'earthquake',    label: 'Earthquake',    color: '#7C3AED' },
+  { key: 'flood',         label: 'Flood',         color: '#0EA5E9' },
+  { key: 'landslide',     label: 'Landslide',     color: '#92400E' },
+  { key: 'forest fire',   label: 'Forest Fire',   color: '#B45309' },
+  { key: 'heavy rainfall', label: 'Heavy Rain',   color: '#0369A1' },
+  { key: 'road closed',   label: 'Road Closed',   color: '#6B7280' },
+  { key: 'heatwave',      label: 'Heatwave',      color: '#F59E0B' },
+  { key: 'fire',          label: 'Fire',          color: '#EA580C' },
 ];
 
 const TIME_CHIPS: { key: TimeWindow; label: string }[] = [
@@ -66,6 +68,8 @@ function detectType(incident: Incident): string | null {
   if (text.includes('flood')) return 'flood';
   if (text.includes('landslide') || text.includes('land slide')) return 'landslide';
   if (text.includes('forest fire') || text.includes('wildfire')) return 'forest fire';
+  if (text.includes('road') && (text.includes('closed') || text.includes('block'))) return 'road closed';
+  if (text.includes('heavy rain') || text.includes('rainfall')) return 'heavy rainfall';
   if (text.includes('fire')) return 'fire';
   if (text.includes('heat') || text.includes('heatwave')) return 'heatwave';
   return null;

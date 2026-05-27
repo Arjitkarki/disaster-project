@@ -4,6 +4,15 @@ from fastapi.middleware.cors import CORSMiddleware
 from apscheduler.schedulers.background import BackgroundScheduler
 
 from app.api.v1.router import v1_router
+from app.services.notifier import start_notifier
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    start_notifier()
+    yield
+
+
 from app.services.sync import sync_bipad_to_supabase
 
 
